@@ -25,7 +25,7 @@ BASE_DIR = os.path.dirname(
 
 FILE_PATH = os.path.join(
     BASE_DIR,
-    "countriesMBTI_16types(1).csv"
+    "countriesMBTI_16types.csv"
 )
 
 if not os.path.isfile(FILE_PATH):
