@@ -2,7 +2,6 @@
 import streamlit as st
 import csv
 import os
-import html
 
 # =====================================
 # 1. 페이지 설정
@@ -20,26 +19,23 @@ st.divider()
 # =====================================
 # 2. CSV 파일 경로 설정
 # =====================================
-
-# 현재 app.py가 있는 pages 폴더의 상위 폴더
 BASE_DIR = os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))
 )
 
-# 상위 폴더에 있는 CSV 파일
 FILE_PATH = os.path.join(
     BASE_DIR,
-    "countriesMBTI_16types.csv"
+    "countriesMBTI_16types(1).csv"
 )
 
-# CSV 파일 확인
 if not os.path.isfile(FILE_PATH):
     st.error("CSV 파일을 찾을 수 없습니다.")
-    st.write("찾으려는 경로:")
     st.code(FILE_PATH)
     st.stop()
 
-# CSV 파일 읽기
+# =====================================
+# 3. CSV 파일 읽기
+# =====================================
 try:
     with open(
         FILE_PATH,
@@ -53,55 +49,47 @@ try:
         columns = reader.fieldnames or []
 
 except Exception as e:
-    st.error("CSV 파일을 읽는 중 오류가 발생했습니다.")
+    st.error("CSV 파일 읽기 오류")
     st.code(str(e))
     st.stop()
 
 if not data or not columns:
-    st.error("CSV 파일에 데이터 또는 컬럼명이 없습니다.")
+    st.error("CSV 파일에 데이터가 없습니다.")
     st.stop()
 
 # =====================================
-# 3. 컬럼 자동 확인
+# 4. 컬럼 확인
 # =====================================
-
-column_map = {
-    str(col).strip().lower(): col
-    for col in columns
-    if col
-}
-
 def find_column(names):
-    for name in names:
-        if name.lower() in column_map:
-            return column_map[name.lower()]
+    for column in columns:
+        if str(column).strip().lower() in names:
+            return column
     return None
 
-country_col = find_column([
+country_col = find_column({
     "country", "국가", "나라",
     "nation", "countries"
-])
+})
 
-mbti_col = find_column([
+mbti_col = find_column({
     "mbti", "type", "mbti_type",
     "personality", "mbti 유형", "유형"
-])
+})
 
-value_col = find_column([
+value_col = find_column({
     "percentage", "percent", "ratio",
     "rate", "비율", "퍼센트",
     "value", "count", "frequency", "population"
-])
+})
 
 if country_col is None:
-    st.error("국가 컬럼을 찾을 수 없습니다.")
-    st.write("CSV 컬럼명:", columns)
+    st.error("국가 컬럼을 찾지 못했습니다.")
+    st.write("현재 CSV 컬럼:", columns)
     st.stop()
 
 # =====================================
-# 4. MBTI 16개 유형
+# 5. MBTI 유형
 # =====================================
-
 MBTI_TYPES = [
     "ISTJ", "ISFJ", "INFJ", "INTJ",
     "ISTP", "ISFP", "INFP", "INTP",
@@ -110,9 +98,8 @@ MBTI_TYPES = [
 ]
 
 # =====================================
-# 5. 숫자 변환
+# 6. 숫자 변환 함수
 # =====================================
-
 def to_number(value):
     try:
         if value is None:
@@ -135,9 +122,8 @@ def to_number(value):
         return None
 
 # =====================================
-# 6. 국가 목록 만들기
+# 7. 국가 목록
 # =====================================
-
 countries = sorted(set(
     str(row.get(country_col, "")).strip()
     for row in data
@@ -150,23 +136,20 @@ if not countries:
     st.stop()
 
 # =====================================
-# 7. 국가 선택
+# 8. 국가 선택
 # =====================================
-
-st.subheader("🔎 분석할 국가 선택")
+st.subheader("🔎 국가 선택")
 
 selected_country = st.selectbox(
-    "국가를 선택하세요!",
+    "분석할 국가를 선택하세요!",
     countries
 )
 
 # =====================================
-# 8. 선택한 국가의 데이터 정리
+# 9. 국가별 MBTI 데이터 정리
 # =====================================
-
 mbti_data = {
-    mbti: 0.0
-    for mbti in MBTI_TYPES
+    mbti: 0.0 for mbti in MBTI_TYPES
 }
 
 country_rows = [
@@ -175,7 +158,7 @@ country_rows = [
     == selected_country
 ]
 
-# 세로형 CSV
+# 세로형 데이터
 if mbti_col and value_col:
 
     for row in country_rows:
@@ -191,42 +174,38 @@ if mbti_col and value_col:
         if mbti in mbti_data and value is not None:
             mbti_data[mbti] += value
 
-# 가로형 CSV
+# 가로형 데이터
 else:
 
     matching_columns = {}
 
     for column in columns:
-
         name = str(column).strip().upper()
 
         if name in MBTI_TYPES:
             matching_columns[name] = column
 
     if not matching_columns:
-        st.error("MBTI 유형 컬럼을 찾지 못했습니다.")
-        st.write("CSV 컬럼명:", columns)
+        st.error("MBTI 컬럼을 찾지 못했습니다.")
+        st.write("CSV 컬럼:", columns)
         st.stop()
 
     for row in country_rows:
 
         for mbti, column in matching_columns.items():
 
-            value = to_number(
-                row.get(column)
-            )
+            value = to_number(row.get(column))
 
             if value is not None:
                 mbti_data[mbti] += value
 
 # =====================================
-# 9. 비율 계산
+# 10. 비율 계산
 # =====================================
-
 total = sum(mbti_data.values())
 
 if total <= 0:
-    st.warning("선택한 국가의 MBTI 데이터가 없습니다.")
+    st.warning("선택한 국가의 데이터가 없습니다.")
     st.stop()
 
 percentages = {
@@ -234,16 +213,16 @@ percentages = {
     for mbti, value in mbti_data.items()
 }
 
+# 높은 비율부터 정렬
 sorted_data = sorted(
     percentages.items(),
-    key=lambda item: item[1],
+    key=lambda x: x[1],
     reverse=True
 )
 
 # =====================================
-# 10. 요약 정보
+# 11. 요약 정보
 # =====================================
-
 top_mbti, top_percent = sorted_data[0]
 
 col1, col2, col3 = st.columns(3)
@@ -260,116 +239,62 @@ with col3:
 st.divider()
 
 # =====================================
-# 11. 막대그래프 색상
+# 12. 실제 막대그래프 만들기
 # =====================================
-
-st.subheader(f"📊 {selected_country}의 MBTI 비율")
+st.subheader(
+    f"📊 {selected_country}의 MBTI 비율"
+)
 
 st.caption(
-    "1위는 파란색, 나머지는 검정색에서 "
-    "회색으로 점점 밝아집니다."
+    "국가별 MBTI 유형의 비율을 막대그래프로 확인해 보세요!"
 )
 
-def get_color(rank, total_types):
+# Streamlit 그래프에 전달할 데이터
+chart_data = {
+    "MBTI": [item[0] for item in sorted_data],
+    "비율(%)": [round(item[1], 2) for item in sorted_data]
+}
 
-    if rank == 0:
-        return "#1677FF"
-
-    if total_types <= 1:
-        return "#222222"
-
-    gray = int(
-        25 + (210 - 25) * (rank - 1)
-        / max(total_types - 2, 1)
-    )
-
-    return f"rgb({gray}, {gray}, {gray})"
-
-# =====================================
-# 12. HTML 그래프 만들기
-# =====================================
-
-chart_html = """
-<div style="
-    width:100%;
-    padding:20px;
-    background:#FFFFFF;
-    border-radius:12px;
-    border:1px solid #E5E7EB;
-    box-sizing:border-box;
-">
-"""
-
-for rank, (mbti, percent) in enumerate(sorted_data):
-
-    color = get_color(rank, len(sorted_data))
-    width = min(max(percent, 0), 100)
-
-    chart_html += f"""
-    <div style="margin-bottom:17px;">
-
-        <div style="
-            display:flex;
-            justify-content:space-between;
-            margin-bottom:6px;
-            font-size:14px;
-            font-weight:600;
-            color:#222222;
-        ">
-            <span>{rank + 1}위 · {html.escape(mbti)}</span>
-            <span>{percent:.2f}%</span>
-        </div>
-
-        <div style="
-            width:100%;
-            height:19px;
-            background:#EEEEEE;
-            border-radius:5px;
-            overflow:hidden;
-        ">
-            <div style="
-                width:{width:.4f}%;
-                height:100%;
-                background:{color};
-                border-radius:5px;
-            "></div>
-        </div>
-
-    </div>
-    """
-
-chart_html += "</div>"
-
-st.markdown(
-    chart_html,
-    unsafe_allow_html=True
+# 실제 그래프 출력
+st.bar_chart(
+    chart_data,
+    x="MBTI",
+    y="비율(%)",
+    height=500
 )
+
+st.divider()
 
 # =====================================
 # 13. MBTI 순위표
 # =====================================
-
-st.divider()
 st.subheader("🏅 MBTI 순위표")
 
 for rank, (mbti, percent) in enumerate(sorted_data):
 
     if rank == 0:
-
         st.success(
-            f"🥇 {rank + 1}위 {mbti} | {percent:.2f}%"
+            f"🥇 {rank + 1}위 | {mbti} | {percent:.2f}%"
+        )
+
+    elif rank == 1:
+        st.info(
+            f"🥈 {rank + 1}위 | {mbti} | {percent:.2f}%"
+        )
+
+    elif rank == 2:
+        st.warning(
+            f"🥉 {rank + 1}위 | {mbti} | {percent:.2f}%"
         )
 
     else:
-
         st.write(
-            f"**{rank + 1}위. {mbti}** — {percent:.2f}%"
+            f"{rank + 1}위 | {mbti} | {percent:.2f}%"
         )
 
 # =====================================
 # 14. 안내
 # =====================================
-
 st.divider()
 
 st.info(
