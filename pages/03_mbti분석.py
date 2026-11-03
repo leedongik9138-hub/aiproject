@@ -29,7 +29,7 @@ BASE_DIR = os.path.dirname(
 # 상위 폴더에 있는 CSV 파일
 FILE_PATH = os.path.join(
     BASE_DIR,
-    "countriesMBTI_16types(1).csv"
+    "countriesMBTI_16types.csv"
 )
 
 # CSV 파일 확인
