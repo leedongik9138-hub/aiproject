@@ -323,4 +323,3 @@ st.info(
 )
 
 st.caption("🌍 국가별 MBTI 분석 앱 | Streamlit")
-
