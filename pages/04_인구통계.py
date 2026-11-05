@@ -20,6 +20,7 @@ st.set_page_config(
 # ---------------------------------
 
 st.title("🏙️ 서울시 연령별 인구 분석")
+
 st.write(
     "행정구역, 성별, 연도를 선택하여 "
     "연령대별 인구 분포를 확인해 보세요!"
@@ -28,20 +29,38 @@ st.write(
 st.divider()
 
 # ---------------------------------
-# 3. CSV 파일 불러오기
+# 3. CSV 파일 위치 자동 검색
 # ---------------------------------
 
-FILE_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "population.csv"
+BASE_DIR = os.path.dirname(
+    os.path.abspath(__file__)
 )
 
-if not os.path.exists(FILE_PATH):
-    st.error(
-        "population.csv 파일을 app.py와 "
-        "같은 폴더에 넣어 주세요."
-    )
+possible_paths = [
+    os.path.join(BASE_DIR, "population.csv"),
+    os.path.join(BASE_DIR, "..", "population.csv")
+]
+
+FILE_PATH = None
+
+for path in possible_paths:
+    if os.path.exists(path):
+        FILE_PATH = path
+        break
+
+if FILE_PATH is None:
+    st.error("population.csv 파일을 찾을 수 없습니다.")
+
+    st.write("확인한 경로:")
+
+    for path in possible_paths:
+        st.write(os.path.abspath(path))
+
     st.stop()
+
+# ---------------------------------
+# 4. CSV 파일 불러오기
+# ---------------------------------
 
 try:
     df = pd.read_csv(
@@ -52,27 +71,32 @@ try:
 
 except UnicodeDecodeError:
     st.error(
-        "CSV 파일의 인코딩을 확인해 주세요. "
-        "현재 코드는 CP949 인코딩을 사용합니다."
+        "CSV 파일의 한글 인코딩을 확인해 주세요."
     )
     st.stop()
 
 except Exception as e:
-    st.error(f"파일을 읽는 중 오류가 발생했습니다: {e}")
+    st.error(f"파일을 읽는 중 오류 발생: {e}")
     st.stop()
 
 # ---------------------------------
-# 4. 행정구역 이름 정리
+# 5. 행정구역 이름 정리
 # ---------------------------------
 
 def clean_district(name):
+
     name = str(name).strip()
 
-    # 행정구역 코드 제거
-    name = re.sub(r"\s*\(\d+\)\s*$", "", name)
+    name = re.sub(
+        r"\s*\(\d+\)\s*$",
+        "",
+        name
+    )
 
-    # 서울특별시 글자 정리
-    name = name.replace("서울특별시 ", "")
+    name = name.replace(
+        "서울특별시 ",
+        ""
+    )
 
     if name == "서울특별시":
         return "서울특별시 전체"
@@ -87,7 +111,7 @@ df["행정구역명"] = df["행정구역"].apply(
 district_list = df["행정구역명"].tolist()
 
 # ---------------------------------
-# 5. 사용자 선택 메뉴
+# 6. 선택 메뉴
 # ---------------------------------
 
 st.subheader("🔎 분석 조건 선택")
@@ -114,7 +138,7 @@ with col3:
     )
 
 # ---------------------------------
-# 6. 성별에 따른 데이터 구분
+# 7. 성별 설정
 # ---------------------------------
 
 gender_dict = {
@@ -126,7 +150,7 @@ gender_dict = {
 gender_code = gender_dict[selected_gender]
 
 # ---------------------------------
-# 7. 연령대 설정
+# 8. 연령대 설정
 # ---------------------------------
 
 age_groups = [
@@ -144,7 +168,7 @@ age_groups = [
 ]
 
 # ---------------------------------
-# 8. 선택한 지역 데이터 찾기
+# 9. 선택한 지역 데이터 찾기
 # ---------------------------------
 
 selected_data = df[
@@ -158,7 +182,7 @@ if selected_data.empty:
 selected_data = selected_data.iloc[0]
 
 # ---------------------------------
-# 9. 연령별 인구 데이터 추출
+# 10. 연령별 인구 데이터 추출
 # ---------------------------------
 
 population = []
@@ -191,7 +215,7 @@ for age in age_groups:
     )
 
 # ---------------------------------
-# 10. 그래프용 데이터 만들기
+# 11. 그래프 데이터 만들기
 # ---------------------------------
 
 chart_df = pd.DataFrame({
@@ -200,7 +224,7 @@ chart_df = pd.DataFrame({
 })
 
 # ---------------------------------
-# 11. 인구 정보 표시
+# 12. 인구 정보 표시
 # ---------------------------------
 
 total_population = sum(population)
@@ -230,7 +254,7 @@ with metric3:
     )
 
 # ---------------------------------
-# 12. 민트색 꺾은선 그래프
+# 13. 민트색 꺾은선 그래프
 # ---------------------------------
 
 st.subheader("📈 연령대별 인구 분포")
@@ -251,11 +275,7 @@ fig.add_trace(
 
         marker=dict(
             color="#65D6C0",
-            size=9,
-            line=dict(
-                color="#FFFFFF",
-                width=1
-            )
+            size=9
         ),
 
         hovertemplate=(
@@ -267,10 +287,11 @@ fig.add_trace(
 )
 
 # ---------------------------------
-# 13. 그래프 디자인
+# 14. 그래프 디자인
 # ---------------------------------
 
 fig.update_layout(
+
     title=dict(
         text=(
             f"{selected_district} "
@@ -304,7 +325,7 @@ fig.update_layout(
     ),
 
     font=dict(
-        family="Malgun Gothic, Apple SD Gothic Neo, sans-serif",
+        family="sans-serif",
         size=13,
         color="#333333"
     ),
@@ -325,7 +346,7 @@ fig.update_layout(
 )
 
 # ---------------------------------
-# 14. 스트림릿에 그래프 출력
+# 15. 그래프 출력
 # ---------------------------------
 
 st.plotly_chart(
@@ -334,7 +355,7 @@ st.plotly_chart(
 )
 
 # ---------------------------------
-# 15. 데이터 표 출력
+# 16. 데이터 표 출력
 # ---------------------------------
 
 with st.expander("📋 연령대별 인구 데이터 확인하기"):
@@ -352,13 +373,13 @@ with st.expander("📋 연령대별 인구 데이터 확인하기"):
     )
 
 # ---------------------------------
-# 16. 안내 문구
+# 17. 마무리
 # ---------------------------------
 
 st.divider()
 
 st.caption(
-    "📌 데이터 출처: 제공된 population.csv 파일"
+    "📌 데이터 출처: population.csv"
 )
 
 st.caption(
@@ -366,3 +387,4 @@ st.caption(
 )
 
 st.success("인구 분석이 완료되었습니다! 😊")
+
