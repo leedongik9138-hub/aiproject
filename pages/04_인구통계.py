@@ -111,7 +111,25 @@ df["행정구역명"] = df["행정구역"].apply(
 district_list = df["행정구역명"].tolist()
 
 # ---------------------------------
-# 6. 선택 메뉴
+# 6. 연령대 설정
+# ---------------------------------
+
+age_groups = [
+    "0~9세",
+    "10~19세",
+    "20~29세",
+    "30~39세",
+    "40~49세",
+    "50~59세",
+    "60~69세",
+    "70~79세",
+    "80~89세",
+    "90~99세",
+    "100세 이상"
+]
+
+# ---------------------------------
+# 7. 사용자 선택 메뉴
 # ---------------------------------
 
 st.subheader("🔎 분석 조건 선택")
@@ -138,7 +156,7 @@ with col3:
     )
 
 # ---------------------------------
-# 7. 성별 설정
+# 8. 성별 설정
 # ---------------------------------
 
 gender_dict = {
@@ -148,24 +166,6 @@ gender_dict = {
 }
 
 gender_code = gender_dict[selected_gender]
-
-# ---------------------------------
-# 8. 연령대 설정
-# ---------------------------------
-
-age_groups = [
-    "0~9세",
-    "10~19세",
-    "20~29세",
-    "30~39세",
-    "40~49세",
-    "50~59세",
-    "60~69세",
-    "70~79세",
-    "80~89세",
-    "90~99세",
-    "100세 이상"
-]
 
 # ---------------------------------
 # 9. 선택한 지역 데이터 찾기
@@ -287,7 +287,7 @@ fig.add_trace(
 )
 
 # ---------------------------------
-# 14. 그래프 디자인
+# 14. 꺾은선 그래프 디자인
 # ---------------------------------
 
 fig.update_layout(
@@ -346,7 +346,7 @@ fig.update_layout(
 )
 
 # ---------------------------------
-# 15. 그래프 출력
+# 15. 꺾은선 그래프 출력
 # ---------------------------------
 
 st.plotly_chart(
@@ -355,16 +355,222 @@ st.plotly_chart(
 )
 
 # ---------------------------------
-# 16. 데이터 표 출력
+# 16. 새로운 기능
+# 연령대별 자치구 인구 순위
+# ---------------------------------
+
+st.divider()
+
+st.subheader("🏆 연령대별 인구 순위")
+
+st.write(
+    "원하는 연령대를 선택하면 "
+    "해당 연령의 인구가 많은 자치구부터 보여줍니다."
+)
+
+# 연령대 선택
+
+selected_age = st.selectbox(
+    "🎂 분석할 연령대 선택",
+    age_groups,
+    key="ranking_age"
+)
+
+# ---------------------------------
+# 17. 선택한 연령대의 열 이름 찾기
+# ---------------------------------
+
+if gender_code == "":
+
+    ranking_column = (
+        f"{selected_year}년_거주자_{selected_age}"
+    )
+
+else:
+
+    ranking_column = (
+        f"{selected_year}년_{gender_code}_거주자_{selected_age}"
+    )
+
+if ranking_column not in df.columns:
+
+    st.error(
+        f"인구 데이터 열을 찾을 수 없습니다: {ranking_column}"
+    )
+
+    st.stop()
+
+# ---------------------------------
+# 18. 서울 전체를 제외한 자치구 데이터
+# ---------------------------------
+
+ranking_df = df[
+    df["행정구역명"] != "서울특별시 전체"
+].copy()
+
+# 인구 수 추출
+
+ranking_df["인구 수"] = pd.to_numeric(
+    ranking_df[ranking_column],
+    errors="coerce"
+).fillna(0)
+
+# ---------------------------------
+# 19. 인구가 많은 순서대로 정렬
+# ---------------------------------
+
+ranking_df = ranking_df.sort_values(
+    by="인구 수",
+    ascending=False,
+    kind="stable"
+).reset_index(drop=True)
+
+# 1위, 2위, 3위 순위 추가
+
+ranking_df["순위"] = (
+    ranking_df.index + 1
+)
+
+# 그래프용 이름
+
+ranking_df["그래프 이름"] = (
+    ranking_df["순위"].astype(str)
+    + "위 "
+    + ranking_df["행정구역명"]
+)
+
+# ---------------------------------
+# 20. 1위 자치구 정보 표시
+# ---------------------------------
+
+if not ranking_df.empty:
+
+    first_place = ranking_df.iloc[0]
+
+    st.metric(
+        label="🥇 선택한 연령대 인구 1위",
+        value=first_place["행정구역명"],
+        delta=f"{int(first_place['인구 수']):,}명"
+    )
+
+# ---------------------------------
+# 21. 자치구별 인구 막대그래프
+# ---------------------------------
+
+st.subheader(
+    f"📊 {selected_year}년 "
+    f"{selected_gender} "
+    f"{selected_age} 자치구별 인구"
+)
+
+bar_fig = go.Figure()
+
+bar_fig.add_trace(
+    go.Bar(
+        x=ranking_df["그래프 이름"],
+        y=ranking_df["인구 수"],
+
+        marker=dict(
+            color="#65D6C0"
+        ),
+
+        name="인구 수",
+
+        hovertemplate=(
+            "%{x}<br>"
+            "인구 수: %{y:,}명"
+            "<extra></extra>"
+        )
+    )
+)
+
+bar_fig.update_layout(
+
+    title=dict(
+        text=f"{selected_age} 인구 자치구 순위",
+        x=0.5,
+        xanchor="center"
+    ),
+
+    xaxis=dict(
+        title="행정구역 (순위별)",
+        categoryorder="array",
+        categoryarray=ranking_df["그래프 이름"].tolist(),
+        tickangle=-45,
+        showgrid=False
+    ),
+
+    yaxis=dict(
+        title="인구 수 (명)",
+        rangemode="tozero",
+        tickformat=",d",
+        showgrid=True,
+        gridcolor="#D9E8E4"
+    ),
+
+    font=dict(
+        family="sans-serif",
+        size=12,
+        color="#333333"
+    ),
+
+    plot_bgcolor="#FFFFFF",
+    paper_bgcolor="#FFFFFF",
+
+    height=650,
+
+    margin=dict(
+        l=60,
+        r=30,
+        t=80,
+        b=130
+    )
+)
+
+st.plotly_chart(
+    bar_fig,
+    use_container_width=True
+)
+
+# ---------------------------------
+# 22. 순위 데이터 표
+# ---------------------------------
+
+with st.expander("🏅 자치구별 인구 순위 자세히 보기"):
+
+    display_ranking = ranking_df[
+        ["순위", "행정구역명", "인구 수"]
+    ].copy()
+
+    display_ranking.columns = [
+        "순위",
+        "행정구역",
+        "인구 수"
+    ]
+
+    display_ranking["인구 수"] = (
+        display_ranking["인구 수"]
+        .apply(lambda x: f"{int(x):,}명")
+    )
+
+    st.dataframe(
+        display_ranking,
+        use_container_width=True,
+        hide_index=True
+    )
+
+# ---------------------------------
+# 23. 기존 연령대별 데이터 표
 # ---------------------------------
 
 with st.expander("📋 연령대별 인구 데이터 확인하기"):
 
     display_df = chart_df.copy()
 
-    display_df["인구 수"] = display_df[
-        "인구 수"
-    ].apply(lambda x: f"{x:,}명")
+    display_df["인구 수"] = (
+        display_df["인구 수"]
+        .apply(lambda x: f"{x:,}명")
+    )
 
     st.dataframe(
         display_df,
@@ -373,7 +579,7 @@ with st.expander("📋 연령대별 인구 데이터 확인하기"):
     )
 
 # ---------------------------------
-# 17. 마무리
+# 24. 마무리
 # ---------------------------------
 
 st.divider()
@@ -387,4 +593,3 @@ st.caption(
 )
 
 st.success("인구 분석이 완료되었습니다! 😊")
-
