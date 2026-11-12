@@ -4,6 +4,7 @@ import csv
 import os
 from datetime import datetime
 
+
 # --------------------------------------------------
 # 1. 페이지 설정
 # --------------------------------------------------
@@ -14,19 +15,26 @@ st.set_page_config(
 )
 
 st.title("🌡️ 서울 월별 평균기온 및 미래 예측")
-st.write("월을 선택하면 과거 평균기온을 바탕으로 선형회귀를 이용해 미래 기온을 예측합니다.")
+st.write(
+    "월과 예측 알고리즘을 선택하면 과거 평균기온을 분석해 "
+    "미래 기온을 예측합니다."
+)
+
 
 # --------------------------------------------------
-# 2. CSV 파일 경로 설정
+# 2. CSV 파일 경로
 # --------------------------------------------------
-# 현재 파일은 pages 폴더 안에 있으므로
-# 한 단계 위 폴더에서 temperature.csv를 찾습니다.
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))
+)
+
 FILE_PATH = os.path.join(BASE_DIR, "temperature.csv")
 
 if not os.path.exists(FILE_PATH):
     st.error("temperature.csv 파일을 찾을 수 없습니다.")
-    st.info("temperature.csv 파일을 app.py와 같은 폴더에 넣어 주세요.")
+    st.info(
+        "temperature.csv 파일을 app.py와 같은 폴더에 넣어 주세요."
+    )
     st.stop()
 
 
@@ -53,7 +61,7 @@ def read_csv_file(file_path):
         except UnicodeDecodeError:
             continue
 
-    raise ValueError("CSV 파일의 인코딩을 읽을 수 없습니다.")
+    raise ValueError("CSV 파일의 인코딩을 확인할 수 없습니다.")
 
 
 try:
@@ -65,7 +73,7 @@ except Exception as e:
 
 
 # --------------------------------------------------
-# 4. 필요한 열이 있는지 확인
+# 4. 필요한 열 확인
 # --------------------------------------------------
 required_columns = ["일시", "평균기온(℃)"]
 
@@ -90,7 +98,9 @@ temperature_data = []
 
 for row in rows:
     date_text = str(row.get("일시", "")).strip()
-    temperature_text = str(row.get("평균기온(℃)", "")).strip()
+    temperature_text = str(
+        row.get("평균기온(℃)", "")
+    ).strip()
 
     if not date_text or not temperature_text:
         continue
@@ -99,7 +109,6 @@ for row in rows:
         # 예: Oct-07 → 2007년 10월
         date = datetime.strptime(date_text, "%b-%y")
 
-        # 쉼표가 포함된 숫자도 처리
         temperature = float(
             temperature_text.replace(",", "")
         )
@@ -111,12 +120,11 @@ for row in rows:
         })
 
     except (ValueError, TypeError):
-        # 날짜나 기온을 숫자로 바꿀 수 없는 행은 제외
         continue
 
 
 if not temperature_data:
-    st.error("CSV 파일에서 날짜와 평균기온 데이터를 찾지 못했습니다.")
+    st.error("CSV 파일에서 기온 데이터를 찾지 못했습니다.")
     st.stop()
 
 
@@ -146,7 +154,7 @@ selected_month = st.selectbox(
 
 
 # --------------------------------------------------
-# 7. 선택한 월의 데이터만 추출
+# 7. 선택한 월의 데이터 추출
 # --------------------------------------------------
 monthly_data = [
     item for item in temperature_data
@@ -154,11 +162,11 @@ monthly_data = [
 ]
 
 if not monthly_data:
-    st.warning("선택한 월의 기온 데이터가 없습니다.")
+    st.warning("선택한 월의 데이터가 없습니다.")
     st.stop()
 
 
-# 같은 연도에 같은 월의 데이터가 여러 개라면 평균 계산
+# 같은 연도에 같은 월의 데이터가 여러 개 있으면 평균 계산
 year_temperature = {}
 
 for item in monthly_data:
@@ -172,8 +180,7 @@ for item in monthly_data:
 
 
 # --------------------------------------------------
-# 8. years와 temperatures 생성
-#    ※ 이 부분이 그래프보다 반드시 먼저 실행되어야 합니다.
+# 8. 연도와 평균기온 배열 생성
 # --------------------------------------------------
 years = sorted(year_temperature.keys())
 
@@ -183,83 +190,405 @@ temperatures = [
 ]
 
 if len(years) < 2:
-    st.warning("선형회귀 예측을 하려면 서로 다른 연도의 데이터가 2개 이상 필요합니다.")
+    st.warning("회귀 분석을 하려면 서로 다른 연도의 데이터가 2개 이상 필요합니다.")
     st.stop()
 
-# 마지막 관측 연도
 latest_year = max(years)
-
-# 마지막 관측 연도의 평균기온
 latest_temperature = temperatures[years.index(latest_year)]
 
+if latest_year >= 2100:
+    st.error("현재 데이터의 마지막 연도가 2100년이므로 미래 예측을 할 수 없습니다.")
+    st.stop()
+
 
 # --------------------------------------------------
-# 9. 예측 연도 선택
+# 9. 예측 연도 입력
 # --------------------------------------------------
-st.subheader("🔮 미래 기온 예측")
+st.subheader("🔮 예측 조건 선택")
 
 prediction_year = st.number_input(
-    "예측할 연도를 선택하세요.",
+    "예측할 연도를 입력하세요.",
     min_value=int(latest_year + 1),
     max_value=2100,
     value=int(min(latest_year + 10, 2100)),
-    step=1
+    step=1,
+    key="prediction_year_input",
+    help=f"{latest_year + 1}년부터 2100년까지 입력할 수 있습니다."
 )
 
 prediction_year = int(prediction_year)
 
 
 # --------------------------------------------------
-# 10. 선형회귀 계산
+# 10. 회귀 알고리즘 함수
 # --------------------------------------------------
-# y = ax + b
-# a: 기울기
-# b: y절편
 
-mean_x = sum(years) / len(years)
-mean_y = sum(temperatures) / len(temperatures)
+# 10-1. 선형회귀
+def fit_linear_regression(x_values, y_values):
+    mean_x = sum(x_values) / len(x_values)
+    mean_y = sum(y_values) / len(y_values)
 
-numerator = sum(
-    (year - mean_x) * (temperature - mean_y)
-    for year, temperature in zip(years, temperatures)
-)
+    numerator = sum(
+        (x - mean_x) * (y - mean_y)
+        for x, y in zip(x_values, y_values)
+    )
 
-denominator = sum(
-    (year - mean_x) ** 2
-    for year in years
-)
+    denominator = sum(
+        (x - mean_x) ** 2
+        for x in x_values
+    )
 
-if denominator == 0:
-    st.error("선형회귀 계산에 필요한 연도 데이터가 부족합니다.")
+    if denominator == 0:
+        raise ValueError("선형회귀를 계산할 수 있는 연도 데이터가 부족합니다.")
+
+    slope = numerator / denominator
+    intercept = mean_y - slope * mean_x
+
+    def predict(x):
+        return slope * x + intercept
+
+    return predict, slope, intercept
+
+
+# 10-2. 다항 회귀(2차)
+# y = a + b*t + c*t²
+# t는 연도에서 평균 연도를 뺀 값입니다.
+def solve_linear_system(matrix, values):
+    n = len(values)
+
+    # 가우스 소거법
+    augmented = [
+        list(matrix[i]) + [values[i]]
+        for i in range(n)
+    ]
+
+    for col in range(n):
+        pivot_row = max(
+            range(col, n),
+            key=lambda row: abs(augmented[row][col])
+        )
+
+        if abs(augmented[pivot_row][col]) < 1e-12:
+            raise ValueError("다항 회귀 계산에 필요한 데이터가 부족합니다.")
+
+        augmented[col], augmented[pivot_row] = (
+            augmented[pivot_row],
+            augmented[col]
+        )
+
+        pivot = augmented[col][col]
+
+        for j in range(col, n + 1):
+            augmented[col][j] /= pivot
+
+        for row in range(n):
+            if row == col:
+                continue
+
+            factor = augmented[row][col]
+
+            for j in range(col, n + 1):
+                augmented[row][j] -= (
+                    factor * augmented[col][j]
+                )
+
+    return [
+        augmented[i][n]
+        for i in range(n)
+    ]
+
+
+def fit_polynomial_regression(x_values, y_values):
+    if len(x_values) < 3:
+        raise ValueError(
+            "2차 다항 회귀에는 서로 다른 연도 데이터가 3개 이상 필요합니다."
+        )
+
+    center = sum(x_values) / len(x_values)
+
+    t_values = [
+        x - center
+        for x in x_values
+    ]
+
+    n = len(t_values)
+
+    sum_t = sum(t_values)
+    sum_t2 = sum(t ** 2 for t in t_values)
+    sum_t3 = sum(t ** 3 for t in t_values)
+    sum_t4 = sum(t ** 4 for t in t_values)
+
+    sum_y = sum(y_values)
+    sum_ty = sum(
+        t * y
+        for t, y in zip(t_values, y_values)
+    )
+    sum_t2y = sum(
+        (t ** 2) * y
+        for t, y in zip(t_values, y_values)
+    )
+
+    matrix = [
+        [n, sum_t, sum_t2],
+        [sum_t, sum_t2, sum_t3],
+        [sum_t2, sum_t3, sum_t4]
+    ]
+
+    values = [
+        sum_y,
+        sum_ty,
+        sum_t2y
+    ]
+
+    a, b, c = solve_linear_system(matrix, values)
+
+    def predict(x):
+        t = x - center
+        return a + b * t + c * (t ** 2)
+
+    return predict, a, b, c
+
+
+# 10-3. 의사결정나무 회귀
+def fit_decision_tree_regression(
+    x_values,
+    y_values,
+    max_depth=3,
+    min_leaf=2
+):
+    training_data = sorted(
+        zip(x_values, y_values),
+        key=lambda item: item[0]
+    )
+
+    def average(values):
+        return sum(values) / len(values)
+
+    def calculate_sse(values):
+        mean_value = average(values)
+
+        return sum(
+            (value - mean_value) ** 2
+            for value in values
+        )
+
+    def build_tree(data, depth):
+        y_list = [
+            item[1]
+            for item in data
+        ]
+
+        node_mean = average(y_list)
+
+        # 종료 조건
+        if depth >= max_depth or len(data) < min_leaf * 2:
+            return {
+                "type": "leaf",
+                "value": node_mean
+            }
+
+        unique_x = sorted(
+            set(item[0] for item in data)
+        )
+
+        if len(unique_x) < 2:
+            return {
+                "type": "leaf",
+                "value": node_mean
+            }
+
+        best_threshold = None
+        best_error = calculate_sse(y_list)
+        best_left = None
+        best_right = None
+
+        # 인접한 연도 사이의 중간값을 분할 후보로 사용
+        thresholds = [
+            (unique_x[i] + unique_x[i + 1]) / 2
+            for i in range(len(unique_x) - 1)
+        ]
+
+        for threshold in thresholds:
+            left_data = [
+                item for item in data
+                if item[0] <= threshold
+            ]
+
+            right_data = [
+                item for item in data
+                if item[0] > threshold
+            ]
+
+            if (
+                len(left_data) < min_leaf
+                or len(right_data) < min_leaf
+            ):
+                continue
+
+            left_y = [item[1] for item in left_data]
+            right_y = [item[1] for item in right_data]
+
+            error = (
+                calculate_sse(left_y)
+                + calculate_sse(right_y)
+            )
+
+            if error < best_error:
+                best_error = error
+                best_threshold = threshold
+                best_left = left_data
+                best_right = right_data
+
+        # 오차를 줄이는 분할이 없으면 현재 노드를 잎으로 만듦
+        if best_threshold is None:
+            return {
+                "type": "leaf",
+                "value": node_mean
+            }
+
+        return {
+            "type": "node",
+            "threshold": best_threshold,
+            "left": build_tree(best_left, depth + 1),
+            "right": build_tree(best_right, depth + 1)
+        }
+
+    tree = build_tree(training_data, 0)
+
+    def predict_one(x, node):
+        if node["type"] == "leaf":
+            return node["value"]
+
+        if x <= node["threshold"]:
+            return predict_one(x, node["left"])
+
+        return predict_one(x, node["right"])
+
+    def predict(x):
+        return predict_one(x, tree)
+
+    return predict, tree
+
+
+# --------------------------------------------------
+# 11. 세 가지 알고리즘 학습
+# --------------------------------------------------
+try:
+    linear_predict, linear_slope, linear_intercept = (
+        fit_linear_regression(years, temperatures)
+    )
+
+    polynomial_predict, poly_a, poly_b, poly_c = (
+        fit_polynomial_regression(years, temperatures)
+    )
+
+    tree_predict, decision_tree = (
+        fit_decision_tree_regression(years, temperatures)
+    )
+
+except Exception as e:
+    st.error(f"회귀 알고리즘 계산 중 오류가 발생했습니다: {e}")
     st.stop()
 
-slope = numerator / denominator
-intercept = mean_y - slope * mean_x
 
+# --------------------------------------------------
+# 12. 알고리즘 선택
+# --------------------------------------------------
+algorithm_names = {
+    "선형회귀": "선형회귀",
+    "다항 회귀 (2차)": "다항 회귀 (2차)",
+    "의사결정나무 회귀": "의사결정나무 회귀"
+}
 
-# 선형회귀 예측 함수
-def predict_temperature(year):
-    return slope * year + intercept
+selected_algorithm = st.selectbox(
+    "🧠 사용할 회귀 알고리즘을 선택하세요.",
+    options=list(algorithm_names.keys())
+)
 
+predictors = {
+    "선형회귀": linear_predict,
+    "다항 회귀 (2차)": polynomial_predict,
+    "의사결정나무 회귀": tree_predict
+}
 
-predicted_temperature = predict_temperature(prediction_year)
+selected_predict = predictors[selected_algorithm]
+
+selected_prediction = selected_predict(prediction_year)
 
 
 # --------------------------------------------------
-# 11. 결정계수 R² 계산
+# 13. 세 알고리즘의 예측값 비교
 # --------------------------------------------------
-predicted_values = [
-    predict_temperature(year)
+linear_value = linear_predict(prediction_year)
+polynomial_value = polynomial_predict(prediction_year)
+tree_value = tree_predict(prediction_year)
+
+st.divider()
+st.subheader(
+    f"📊 {prediction_year}년 {month_names[selected_month]} 예측 결과"
+)
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.metric(
+        "선택한 알고리즘",
+        selected_algorithm
+    )
+
+with col2:
+    st.metric(
+        "선택 알고리즘 예측값",
+        f"{selected_prediction:.2f} ℃"
+    )
+
+with col3:
+    st.metric(
+        "마지막 실제 관측 연도",
+        f"{latest_year}년"
+    )
+
+st.markdown("### 🔍 세 가지 알고리즘 예측값 비교")
+
+comparison_data = [
+    {
+        "회귀 알고리즘": "선형회귀",
+        "예측 평균기온(℃)": round(linear_value, 2)
+    },
+    {
+        "회귀 알고리즘": "다항 회귀 (2차)",
+        "예측 평균기온(℃)": round(polynomial_value, 2)
+    },
+    {
+        "회귀 알고리즘": "의사결정나무 회귀",
+        "예측 평균기온(℃)": round(tree_value, 2)
+    }
+]
+
+st.table(comparison_data)
+
+st.caption(
+    "같은 월과 같은 예측 연도를 기준으로 세 알고리즘의 결과를 비교합니다."
+)
+
+
+# --------------------------------------------------
+# 14. 선택한 알고리즘의 결정계수 R² 계산
+# --------------------------------------------------
+fitted_values = [
+    selected_predict(year)
     for year in years
 ]
 
+mean_temperature = sum(temperatures) / len(temperatures)
+
 ss_res = sum(
     (actual - predicted) ** 2
-    for actual, predicted in zip(temperatures, predicted_values)
+    for actual, predicted in zip(temperatures, fitted_values)
 )
 
 ss_tot = sum(
-    (actual - mean_y) ** 2
+    (actual - mean_temperature) ** 2
     for actual in temperatures
 )
 
@@ -268,76 +597,63 @@ if ss_tot == 0:
 else:
     r_squared = 1 - (ss_res / ss_tot)
 
-
-# --------------------------------------------------
-# 12. 예측 결과 표시
-# --------------------------------------------------
-st.divider()
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.metric(
-        "선택한 월",
-        month_names[selected_month]
-    )
-
-with col2:
-    st.metric(
-        f"{prediction_year}년 예측 평균기온",
-        f"{predicted_temperature:.2f} ℃"
-    )
-
-with col3:
-    st.metric(
-        "선형회귀 결정계수 R²",
-        f"{r_squared:.4f}"
-    )
-
-st.caption(
-    f"분석에 사용한 실제 데이터: {min(years)}년 ~ {latest_year}년"
+st.metric(
+    f"{selected_algorithm} 학습 데이터 결정계수 R²",
+    f"{r_squared:.4f}"
 )
 
 
 # --------------------------------------------------
-# 13. 그래프 데이터 만들기
+# 15. 그래프 데이터 생성
 # --------------------------------------------------
-# 실제 기온과 회귀 추세선을 같은 데이터에 저장합니다.
-# forecast는 마지막 관측 연도부터 예측 연도까지 이어지는 선입니다.
+actual_by_year = {
+    year: temperature
+    for year, temperature in zip(years, temperatures)
+}
 
 chart_data = []
 
-for year, temperature in zip(years, temperatures):
+for year in range(min(years), prediction_year + 1):
+    actual_value = actual_by_year.get(year)
+
+    model_value = selected_predict(year)
+
+    forecast_value = None
+
+    if year == latest_year:
+        forecast_value = selected_predict(year)
+
+    elif year == prediction_year:
+        forecast_value = selected_predict(year)
+
     chart_data.append({
         "year": int(year),
-        "actual": float(temperature),
-        "fitted": float(predict_temperature(year)),
-        "forecast": None
+        "actual": (
+            float(actual_value)
+            if actual_value is not None
+            else None
+        ),
+        "model": float(model_value),
+        "forecast": (
+            float(forecast_value)
+            if forecast_value is not None
+            else None
+        )
     })
 
-# 마지막 관측 연도에 예측선의 시작점을 추가
-chart_data[-1]["forecast"] = float(latest_temperature)
-
-# 미래 예측 연도 추가
-chart_data.append({
-    "year": prediction_year,
-    "actual": None,
-    "fitted": None,
-    "forecast": float(predicted_temperature)
-})
-
 
 # --------------------------------------------------
-# 14. 그래프 그리기
+# 16. 그래프 표시
 # --------------------------------------------------
+st.divider()
+
 st.subheader(
-    f"📈 {month_names[selected_month]} 평균기온 및 미래 예측 그래프"
+    f"📈 {month_names[selected_month]} 평균기온 및 "
+    f"{selected_algorithm} 예측 그래프"
 )
 
 chart_spec = {
     "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
-
-    "description": "서울의 월별 평균기온과 선형회귀 미래 예측 그래프",
 
     "data": {
         "values": chart_data
@@ -387,13 +703,22 @@ chart_spec = {
                     "type": "quantitative"
                 },
                 "tooltip": [
-                    {"field": "year", "type": "quantitative", "title": "연도"},
-                    {"field": "actual", "type": "quantitative", "title": "실제 평균기온", "format": ".2f"}
+                    {
+                        "field": "year",
+                        "type": "quantitative",
+                        "title": "연도"
+                    },
+                    {
+                        "field": "actual",
+                        "type": "quantitative",
+                        "title": "실제 평균기온",
+                        "format": ".2f"
+                    }
                 ]
             }
         },
 
-        # 실제 관측 데이터: 회색 점
+        # 실제 관측값: 회색 점
         {
             "transform": [
                 {"filter": "isValid(datum.actual)"}
@@ -418,17 +743,23 @@ chart_spec = {
                     "type": "quantitative"
                 },
                 "tooltip": [
-                    {"field": "year", "type": "quantitative", "title": "연도"},
-                    {"field": "actual", "type": "quantitative", "title": "실제 평균기온", "format": ".2f"}
+                    {
+                        "field": "year",
+                        "type": "quantitative",
+                        "title": "연도"
+                    },
+                    {
+                        "field": "actual",
+                        "type": "quantitative",
+                        "title": "실제 평균기온",
+                        "format": ".2f"
+                    }
                 ]
             }
         },
 
-        # 선형회귀 추세선: 파란색 점선
+        # 선택한 알고리즘의 예측 곡선: 파란색 점선
         {
-            "transform": [
-                {"filter": "isValid(datum.fitted)"}
-            ],
             "mark": {
                 "type": "line",
                 "color": "blue",
@@ -445,7 +776,7 @@ chart_spec = {
                     }
                 },
                 "y": {
-                    "field": "fitted",
+                    "field": "model",
                     "type": "quantitative"
                 },
                 "order": {
@@ -453,13 +784,22 @@ chart_spec = {
                     "type": "quantitative"
                 },
                 "tooltip": [
-                    {"field": "year", "type": "quantitative", "title": "연도"},
-                    {"field": "fitted", "type": "quantitative", "title": "회귀 예측값", "format": ".2f"}
+                    {
+                        "field": "year",
+                        "type": "quantitative",
+                        "title": "연도"
+                    },
+                    {
+                        "field": "model",
+                        "type": "quantitative",
+                        "title": "모델 예측값",
+                        "format": ".2f"
+                    }
                 ]
             }
         },
 
-        # 미래 예측 구간: 주황색 선
+        # 마지막 관측 연도부터 선택한 예측 연도까지: 주황색 선
         {
             "transform": [
                 {"filter": "isValid(datum.forecast)"}
@@ -467,7 +807,8 @@ chart_spec = {
             "mark": {
                 "type": "line",
                 "color": "orange",
-                "strokeWidth": 3
+                "strokeWidth": 4,
+                "point": True
             },
             "encoding": {
                 "x": {
@@ -487,8 +828,17 @@ chart_spec = {
                     "type": "quantitative"
                 },
                 "tooltip": [
-                    {"field": "year", "type": "quantitative", "title": "연도"},
-                    {"field": "forecast", "type": "quantitative", "title": "예측 평균기온", "format": ".2f"}
+                    {
+                        "field": "year",
+                        "type": "quantitative",
+                        "title": "연도"
+                    },
+                    {
+                        "field": "forecast",
+                        "type": "quantitative",
+                        "title": "예측 평균기온",
+                        "format": ".2f"
+                    }
                 ]
             }
         }
@@ -502,79 +852,86 @@ chart_spec = {
 }
 
 st.vega_lite_chart(
+    None,
     chart_spec,
     use_container_width=True
 )
 
 
 # --------------------------------------------------
-# 15. 그래프 범례 설명
+# 17. 그래프 범례
 # --------------------------------------------------
 st.markdown("### 🎨 그래프 색상 설명")
 
 st.markdown("""
 - 🔴 **빨간색 선**: CSV에 기록된 실제 평균기온
 - ⚪ **회색 점**: 실제 관측된 평균기온 데이터
-- 🔵 **파란색 점선**: 과거 데이터를 바탕으로 계산한 선형회귀 추세선
-- 🟠 **주황색 선**: 마지막 관측 연도부터 선택한 미래 연도까지의 예측 구간
+- 🔵 **파란색 점선**: 선택한 회귀 알고리즘이 계산한 추세
+- 🟠 **주황색 선**: 마지막 관측 연도부터 선택한 예측 연도까지의 구간
 """)
 
 
 # --------------------------------------------------
-# 16. 선형회귀 알고리즘 설명
+# 18. 알고리즘 설명
 # --------------------------------------------------
 st.divider()
+st.subheader("🧠 회귀 알고리즘 설명")
 
-st.subheader("🧠 선형회귀 알고리즘이란?")
+st.markdown("### 1. 선형회귀")
 
 st.write("""
-선형회귀는 과거 데이터의 전체적인 흐름을 가장 잘 나타내는
-직선을 찾아 미래 값을 예측하는 알고리즘입니다.
-
-이번 프로그램에서는 연도를 x값으로,
-선택한 월의 평균기온을 y값으로 사용합니다.
+과거 데이터의 흐름을 가장 잘 나타내는 직선으로 미래 값을 예측합니다.
+기온이 일정한 방향으로 증가하거나 감소하는 경향을 표현할 때 사용할 수 있습니다.
 """)
 
 st.latex(r"y = ax + b")
 
-st.write("""
-- **x**: 연도
-- **y**: 평균기온
-- **a**: 기울기
-- **b**: y절편
-
-기울기가 양수이면 시간이 지날수록 평균기온이 높아지는 경향을,
-음수이면 낮아지는 경향을 나타냅니다.
-""")
-
-st.markdown("### 📐 이번 분석에서 계산된 값")
-
-st.write(f"- 기울기(a): **{slope:.6f}**")
-st.write(f"- y절편(b): **{intercept:.4f}**")
-st.write(f"- 결정계수(R²): **{r_squared:.4f}**")
-
-st.markdown("### 🔍 선형회귀 계산 과정")
+st.markdown("### 2. 다항 회귀 (2차)")
 
 st.write("""
-1. 선택한 월의 연도별 평균기온 데이터를 모읍니다.
-2. 연도와 평균기온의 평균을 계산합니다.
-3. 과거 데이터에 가장 잘 맞는 직선의 기울기와 y절편을 계산합니다.
-4. 계산된 직선에 미래 연도를 넣어 예측 평균기온을 구합니다.
+직선이 아닌 곡선으로 데이터의 흐름을 표현합니다.
+기온 변화가 일정한 직선 형태가 아닐 때 선형회귀와 다른 예측값을 낼 수 있습니다.
 """)
 
-st.latex(r"a = \frac{\sum (x_i-\bar{x})(y_i-\bar{y})}{\sum (x_i-\bar{x})^2}")
+st.latex(r"y = a + bt + ct^2")
 
-st.latex(r"b = \bar{y} - a\bar{x}")
+st.markdown("### 3. 의사결정나무 회귀")
 
-st.latex(r"\hat{y} = ax+b")
+st.write("""
+데이터를 여러 구간으로 나누고 각 구간에 포함된 기온의 평균을 이용합니다.
+구간마다 예측값이 달라질 수 있으며, 학습한 데이터 범위를 벗어난 미래 연도에서는
+마지막 구간의 평균값을 예측값으로 사용합니다.
+""")
 
-st.warning(
-    "주의: 이 결과는 과거 기온의 선형적인 경향이 미래에도 이어진다고 가정한 "
-    "통계적 예측입니다. 실제 미래 기온을 확정적으로 알려주는 값은 아닙니다."
-)
+st.markdown("### 📌 알고리즘별 특징 비교")
+
+st.table([
+    {
+        "알고리즘": "선형회귀",
+        "예측 방식": "하나의 직선",
+        "특징": "일정한 증가·감소 경향"
+    },
+    {
+        "알고리즘": "다항 회귀 (2차)",
+        "예측 방식": "곡선",
+        "특징": "휘어지는 변화 경향"
+    },
+    {
+        "알고리즘": "의사결정나무 회귀",
+        "예측 방식": "구간별 평균",
+        "특징": "구간에 따라 계단식 변화"
+    }
+])
+
+st.warning("""
+주의: 세 알고리즘의 예측값은 통계적 추정치이며 실제 미래 기온을 보장하지 않습니다.
+특히 먼 미래로 갈수록 예측 오차가 커질 수 있습니다.
+다항 회귀는 학습 범위 밖에서 곡선이 크게 변할 수 있고,
+의사결정나무 회귀는 학습 범위 밖의 미래 변화를 스스로 이어서 예측하지 못합니다.
+""")
 
 st.caption(
-    "참고: 현재 CSV 데이터는 1907년부터 시작하지 않습니다. "
-    "그래프의 가로축은 1907~2100년으로 표시하지만, 실제 데이터가 없는 기간에는 "
-    "관측 선과 점이 나타나지 않습니다."
+    "현재 CSV 데이터는 1907년부터 시작하지 않습니다. "
+    "그래프의 가로축은 1907~2100년으로 표시하지만, "
+    "실제 관측 자료가 없는 기간에는 관측 선과 점이 표시되지 않습니다."
 )
