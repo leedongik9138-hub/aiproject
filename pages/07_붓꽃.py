@@ -10,9 +10,9 @@ from sklearn.pipeline import Pipeline
 from sklearn.metrics import accuracy_score
 
 
-# =====================================
+# =========================================
 # 1. 페이지 설정
-# =====================================
+# =========================================
 
 st.set_page_config(
     page_title="붓꽃 품종 예측 AI",
@@ -23,44 +23,79 @@ st.set_page_config(
 st.title("🌸 인공지능 붓꽃 품종 예측")
 st.write(
     "꽃잎 길이와 너비를 입력하면 "
-    "인공지능이 붓꽃의 품종을 예측합니다!"
+    "인공지능이 붓꽃 품종을 예측해 줍니다!"
 )
 
 st.divider()
 
 
-# =====================================
-# 2. CSV 파일 불러오기
-# =====================================
+# =========================================
+# 2. CSV 파일 위치 설정
+# =========================================
 
-FILE_PATH = Path(__file__).parent / "Iris.csv"
+# 현재 파이썬 파일이 있는 pages 폴더
+CURRENT_DIR = Path(__file__).resolve().parent
+
+# pages 폴더의 상위 프로젝트 폴더
+PROJECT_DIR = CURRENT_DIR.parent
+
+# CSV 파일이 있을 수 있는 위치
+possible_paths = [
+    PROJECT_DIR / "iris" / "Iris.csv",
+    CURRENT_DIR / "iris" / "Iris.csv",
+    PROJECT_DIR / "Iris.csv",
+    CURRENT_DIR / "Iris.csv",
+    PROJECT_DIR / "iris" / "iris.csv",
+    CURRENT_DIR / "iris" / "iris.csv"
+]
+
+FILE_PATH = None
+
+for path in possible_paths:
+    if path.is_file():
+        FILE_PATH = path
+        break
+
+
+# =========================================
+# 3. 데이터 불러오기
+# =========================================
+
+if FILE_PATH is None:
+    st.error("Iris.csv 파일을 찾을 수 없습니다.")
+
+    st.write("확인한 위치:")
+
+    for path in possible_paths:
+        st.write(str(path))
+
+    st.info(
+        "GitHub에서 iris 폴더 안에 "
+        "Iris.csv 파일이 있는지 확인해 주세요."
+    )
+
+    st.stop()
 
 
 @st.cache_data
 def load_data(file_path):
-    data = pd.read_csv(file_path, encoding="utf-8-sig")
-    return data
-
-
-if not FILE_PATH.exists():
-    st.error(
-        "Iris.csv 파일을 찾을 수 없습니다.\n\n"
-        "app.py와 Iris.csv를 같은 폴더에 넣어 주세요."
+    return pd.read_csv(
+        file_path,
+        encoding="utf-8-sig"
     )
-    st.stop()
 
 
 try:
     df = load_data(str(FILE_PATH))
 
 except Exception as e:
-    st.error(f"CSV 파일을 읽는 중 오류가 발생했습니다: {e}")
+    st.error(f"CSV 파일 읽기 오류: {e}")
     st.stop()
 
 
-# =====================================
-# 3. 데이터 확인 및 정리
-# =====================================
+# =========================================
+# 4. 데이터 확인
+# =========================================
 
 required_columns = [
     "PetalLengthCm",
@@ -75,40 +110,55 @@ missing_columns = [
 
 if missing_columns:
     st.error(
-        f"CSV 파일에 필요한 열이 없습니다: {missing_columns}"
+        f"CSV 파일의 열 이름이 올바르지 않습니다: "
+        f"{missing_columns}"
     )
+    st.write("현재 CSV 열 이름:", list(df.columns))
     st.stop()
 
 
 df = df[required_columns].copy()
 
 df["PetalLengthCm"] = pd.to_numeric(
-    df["PetalLengthCm"], errors="coerce"
+    df["PetalLengthCm"],
+    errors="coerce"
 )
 
 df["PetalWidthCm"] = pd.to_numeric(
-    df["PetalWidthCm"], errors="coerce"
+    df["PetalWidthCm"],
+    errors="coerce"
 )
 
 df = df.dropna()
 
-df["Species"] = df["Species"].astype(str)
+df["Species"] = df["Species"].astype(str).str.strip()
 
-if df.empty or df["Species"].nunique() < 2:
-    st.error("분류 학습에 필요한 데이터가 부족합니다.")
+df = df[df["Species"] != ""]
+
+if df.empty:
+    st.error("분석할 데이터가 없습니다.")
+    st.stop()
+
+if df["Species"].nunique() < 2:
+    st.error("품종이 2종류 이상 있어야 학습할 수 있습니다.")
+    st.stop()
+
+species_counts = df["Species"].value_counts()
+
+if species_counts.min() < 2:
+    st.error("각 품종에 최소 2개 이상의 데이터가 필요합니다.")
     st.stop()
 
 
-# =====================================
-# 4. 학습 데이터와 테스트 데이터 분리
-# =====================================
+# =========================================
+# 5. 학습 데이터와 테스트 데이터 분리
+# =========================================
 
 X = df[
     ["PetalLengthCm", "PetalWidthCm"]
 ]
 
 y = df["Species"]
-
 
 X_train, X_test, y_train, y_test = train_test_split(
     X,
@@ -119,42 +169,37 @@ X_train, X_test, y_train, y_test = train_test_split(
 )
 
 
-# =====================================
-# 5. KNN 모델 생성 및 학습
-# =====================================
+# =========================================
+# 6. KNN 알고리즘
+# =========================================
 
 model = Pipeline([
     ("scaler", StandardScaler()),
     ("knn", KNeighborsClassifier(n_neighbors=5))
 ])
 
-
 model.fit(X_train, y_train)
 
-
-# 테스트 데이터 정확도
-test_pred = model.predict(X_test)
+test_prediction = model.predict(X_test)
 
 accuracy = accuracy_score(
     y_test,
-    test_pred
+    test_prediction
 )
 
-
-# 최종 예측을 위해 전체 데이터로 학습
+# 최종 모델은 전체 데이터로 다시 학습
 model.fit(X, y)
 
 
-# =====================================
-# 6. 입력 범위 계산
-# =====================================
+# =========================================
+# 7. 입력 가능한 범위
+# =========================================
 
 length_min = float(df["PetalLengthCm"].min())
 length_max = float(df["PetalLengthCm"].max())
 
 width_min = float(df["PetalWidthCm"].min())
 width_max = float(df["PetalWidthCm"].max())
-
 
 st.subheader("📏 입력 가능한 꽃잎 크기")
 
@@ -171,14 +216,14 @@ with col2:
     )
 
 st.caption(
-    "입력 범위는 Iris.csv에 기록된 실제 관측값의 "
+    "위 범위는 실제 Iris.csv 데이터의 "
     "최솟값과 최댓값입니다."
 )
 
 
-# =====================================
-# 7. 사용자 입력
-# =====================================
+# =========================================
+# 8. 사용자 입력
+# =========================================
 
 st.subheader("✏️ 꽃잎 크기 입력")
 
@@ -189,7 +234,7 @@ with col1:
         "꽃잎 길이 (cm)",
         min_value=length_min,
         max_value=length_max,
-        value=4.0,
+        value=min(max(4.0, length_min), length_max),
         step=0.1,
         format="%.1f"
     )
@@ -199,19 +244,17 @@ with col2:
         "꽃잎 너비 (cm)",
         min_value=width_min,
         max_value=width_max,
-        value=1.2,
+        value=min(max(1.2, width_min), width_max),
         step=0.1,
         format="%.1f"
     )
 
 
-# =====================================
-# 8. 품종 예측
-# =====================================
+# =========================================
+# 9. 품종 예측
+# =========================================
 
-st.subheader("🔍 붓꽃 품종 예측")
-
-if st.button("🌸 품종 예측하기", type="primary"):
+if st.button("🔍 붓꽃 품종 예측하기", type="primary"):
 
     input_data = pd.DataFrame({
         "PetalLengthCm": [petal_length],
@@ -223,7 +266,7 @@ if st.button("🌸 품종 예측하기", type="primary"):
     species_name = prediction.replace("Iris-", "")
 
     st.success(
-        f"🎉 예측 결과: {species_name}"
+        f"🎉 예측된 붓꽃 품종은 {species_name}입니다!"
     )
 
     st.write(f"꽃잎 길이: {petal_length} cm")
@@ -234,65 +277,58 @@ if st.button("🌸 품종 예측하기", type="primary"):
         f"{accuracy * 100:.1f}%"
     )
 
-    st.caption(
-        "정확도는 테스트 데이터에 대한 평가 결과이며, "
-        "개별 예측의 확률은 아닙니다."
-    )
 
-
-# =====================================
-# 9. 품종별 산점도 그래프
-# =====================================
+# =========================================
+# 10. 산점도 그래프
+# =========================================
 
 st.divider()
 
 st.subheader("📊 붓꽃 품종별 꽃잎 크기 그래프")
 
 st.write(
-    "가로축은 꽃잎 길이, 세로축은 꽃잎 너비입니다."
+    "가로축: 꽃잎 길이(cm) / "
+    "세로축: 꽃잎 너비(cm)"
 )
 
-# 그래프용 데이터 생성
+# 그래프용 데이터
 chart_df = df.copy()
 
 chart_df["품종"] = chart_df["Species"].str.replace(
-    "Iris-", "", regex=False
+    "Iris-", "",
+    regex=False
 )
 
-chart_df["표시 크기"] = 50
-
-
-# 사용자 입력 위치 추가
-input_row = pd.DataFrame({
+# 사용자 입력값을 그래프에 추가
+input_df = pd.DataFrame({
     "PetalLengthCm": [petal_length],
     "PetalWidthCm": [petal_width],
-    "Species": ["사용자 입력"],
-    "품종": ["⭐ 사용자 입력"],
-    "표시 크기": [250]
+    "품종": ["사용자 입력"]
 })
 
 chart_df = pd.concat(
-    [chart_df, input_row],
+    [
+        chart_df[
+            ["PetalLengthCm", "PetalWidthCm", "품종"]
+        ],
+        input_df
+    ],
     ignore_index=True
 )
 
-
-# Streamlit 기본 산점도 그래프
 st.scatter_chart(
     chart_df,
     x="PetalLengthCm",
     y="PetalWidthCm",
     color="품종",
-    size="표시 크기",
-    size_max=250,
     x_label="꽃잎 길이 (cm)",
     y_label="꽃잎 너비 (cm)"
 )
 
 
-# =====================================
-# 10. 데이터 정보
-# =====================================
+# =========================================
+# 11. 데이터 정보
+# =========================================
 
 st.divider()
 
@@ -300,11 +336,20 @@ st.subheader("📚 데이터 분석 정보")
 
 col1, col2, col3 = st.columns(3)
 
-col1.metric("전체 데이터", f"{len(df)}개")
+col1.metric(
+    "전체 데이터",
+    f"{len(df)}개"
+)
 
-col2.metric("붓꽃 품종", f"{df['Species'].nunique()}종")
+col2.metric(
+    "붓꽃 품종",
+    f"{df['Species'].nunique()}종"
+)
 
-col3.metric("분류 알고리즘", "KNN")
+col3.metric(
+    "사용 알고리즘",
+    "KNN"
+)
 
 with st.expander("원본 데이터 확인하기"):
     st.dataframe(
