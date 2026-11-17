@@ -2,7 +2,6 @@
 import streamlit as st
 import pandas as pd
 import os
-import html
 
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
@@ -22,7 +21,6 @@ st.set_page_config(
 )
 
 st.title("🌸 붓꽃(Iris) 품종 AI 분석")
-
 st.write(
     "3가지 인공지능 알고리즘으로 붓꽃의 품종을 예측하고 "
     "결과를 비교해 보세요!"
@@ -58,6 +56,7 @@ try:
             FILE_PATH,
             encoding="utf-8-sig"
         )
+
     except UnicodeDecodeError:
         df = pd.read_csv(
             FILE_PATH,
@@ -94,11 +93,21 @@ missing_columns = [
 ]
 
 if missing_columns:
+
     st.error(
         f"필요한 열을 찾지 못했습니다: {missing_columns}"
     )
-    st.write("실제 CSV 열 이름:", df.columns.tolist())
-    st.write("CSV 파일 위치:", FILE_PATH)
+
+    st.write(
+        "실제 CSV 열 이름:",
+        df.columns.tolist()
+    )
+
+    st.write(
+        "CSV 파일 위치:",
+        FILE_PATH
+    )
+
     st.stop()
 
 
@@ -107,6 +116,7 @@ if missing_columns:
 # ==========================================
 
 for col in FEATURES:
+
     df[col] = pd.to_numeric(
         df[col],
         errors="coerce"
@@ -123,14 +133,16 @@ df = df.dropna(
     subset=REQUIRED_COLUMNS
 )
 
-df = df[df["품종"] != ""]
+df = df[
+    df["품종"] != ""
+]
 
 if len(df) < 2:
     st.error("학습할 데이터가 부족합니다.")
     st.stop()
 
 if df["품종"].nunique() < 2:
-    st.error("최소 2개 이상의 품종이 필요합니다.")
+    st.error("예측하려면 최소 2개 이상의 품종이 필요합니다.")
     st.stop()
 
 
@@ -143,15 +155,25 @@ st.subheader("📊 데이터 정보")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.metric("전체 데이터", f"{len(df)}개")
+    st.metric(
+        "전체 데이터",
+        f"{len(df)}개"
+    )
 
 with col2:
-    st.metric("붓꽃 품종", f"{df['품종'].nunique()}종")
+    st.metric(
+        "붓꽃 품종",
+        f"{df['품종'].nunique()}종"
+    )
 
 with col3:
-    st.metric("사용 가능한 속성", "4개")
+    st.metric(
+        "사용 가능한 속성",
+        "4개"
+    )
 
 with st.expander("📁 CSV 데이터 확인"):
+
     st.dataframe(
         df,
         use_container_width=True
@@ -190,7 +212,7 @@ def create_models(number_of_rows):
 
 
 # ==========================================
-# 8. 예측 함수
+# 8. 예측 및 비교 함수
 # ==========================================
 
 def predict_and_compare(selected_features, input_values):
@@ -210,12 +232,16 @@ def predict_and_compare(selected_features, input_values):
 
     for model_name, model in models.items():
 
+        # 인공지능 학습
         model.fit(X, y)
 
+        # 품종 예측
         prediction = model.predict(input_df)[0]
 
+        # 예측 확률 계산
         probabilities = model.predict_proba(input_df)[0]
 
+        # 예측 결과 저장
         results.append({
             "알고리즘": model_name,
             "예측 품종": prediction,
@@ -241,226 +267,16 @@ def predict_and_compare(selected_features, input_values):
 
 
 # ==========================================
-# 9. 검정색 큰 동그라미 그래프 함수
+# 9. 예측 화면 함수
 # ==========================================
 
-def show_custom_graph(
-    selected_features,
-    input_values,
-    graph_key
-):
-
-    x_col = selected_features[0]
-    y_col = selected_features[1]
-
-    x_min = float(df[x_col].min())
-    x_max = float(df[x_col].max())
-
-    y_min = float(df[y_col].min())
-    y_max = float(df[y_col].max())
-
-    x_range = max(x_max - x_min, 0.1)
-    y_range = max(y_max - y_min, 0.1)
-
-    x_padding = x_range * 0.08
-    y_padding = y_range * 0.08
-
-    graph_width = 800
-    graph_height = 440
-
-    left = 75
-    right = 25
-    top = 25
-    bottom = 65
-
-    inner_width = graph_width - left - right
-    inner_height = graph_height - top - bottom
-
-    def get_x(value):
-        return (
-            left +
-            (value - x_min + x_padding) /
-            (x_range + 2 * x_padding) *
-            inner_width
-        )
-
-    def get_y(value):
-        return (
-            top +
-            (y_max + y_padding - value) /
-            (y_range + 2 * y_padding) *
-            inner_height
-        )
-
-    colors = [
-        "#3182CE",
-        "#E53E3E",
-        "#38A169",
-        "#805AD5",
-        "#D69E2E"
-    ]
-
-    svg_parts = []
-
-    svg_parts.append(
-        f'<svg viewBox="0 0 {graph_width} {graph_height}" '
-        'width="100%" xmlns="http://www.w3.org/2000/svg">'
-    )
-
-    # 배경
-    svg_parts.append(
-        f'<rect width="{graph_width}" height="{graph_height}" '
-        'fill="white" rx="8"/>'
-    )
-
-    # 가로 격자와 세로 격자
-    for i in range(6):
-
-        x = left + inner_width * i / 5
-        y = top + inner_height * i / 5
-
-        x_value = x_min - x_padding + (
-            (x_max - x_min + 2 * x_padding) * i / 5
-        )
-
-        y_value = y_max + y_padding - (
-            (y_max - y_min + 2 * y_padding) * i / 5
-        )
-
-        svg_parts.append(
-            f'<line x1="{x}" y1="{top}" '
-            f'x2="{x}" y2="{top + inner_height}" '
-            'stroke="#E2E8F0" stroke-width="1"/>'
-        )
-
-        svg_parts.append(
-            f'<line x1="{left}" y1="{y}" '
-            f'x2="{left + inner_width}" y2="{y}" '
-            'stroke="#E2E8F0" stroke-width="1"/>'
-        )
-
-        svg_parts.append(
-            f'<text x="{x}" y="{top + inner_height + 23}" '
-            'font-size="12" text-anchor="middle" fill="#333">'
-            f'{x_value:.2f}</text>'
-        )
-
-        svg_parts.append(
-            f'<text x="{left - 12}" y="{y + 4}" '
-            'font-size="12" text-anchor="end" fill="#333">'
-            f'{y_value:.2f}</text>'
-        )
-
-    # 축
-    svg_parts.append(
-        f'<line x1="{left}" y1="{top}" '
-        f'x2="{left}" y2="{top + inner_height}" '
-        'stroke="#333" stroke-width="2"/>'
-    )
-
-    svg_parts.append(
-        f'<line x1="{left}" y1="{top + inner_height}" '
-        f'x2="{left + inner_width}" y2="{top + inner_height}" '
-        'stroke="#333" stroke-width="2"/>'
-    )
-
-    # 기존 데이터 점
-    species_list = sorted(df["품종"].unique())
-
-    for index, species in enumerate(species_list):
-
-        color = colors[index % len(colors)]
-
-        species_data = df[df["품종"] == species]
-
-        for _, row in species_data.iterrows():
-
-            cx = get_x(float(row[x_col]))
-            cy = get_y(float(row[y_col]))
-
-            svg_parts.append(
-                f'<circle cx="{cx:.2f}" cy="{cy:.2f}" '
-                f'r="5" fill="{color}" fill-opacity="0.7"/>'
-            )
-
-    # 입력한 데이터: 검정색 큰 원
-    input_x = get_x(input_values[0])
-    input_y = get_y(input_values[1])
-
-    svg_parts.append(
-        f'<circle cx="{input_x:.2f}" cy="{input_y:.2f}" '
-        'r="11" fill="black" stroke="white" '
-        'stroke-width="2"/>'
-    )
-
-    # 검정색 원 설명
-    svg_parts.append(
-        f'<text x="{input_x + 15}" y="{input_y - 14}" '
-        'font-size="13" font-weight="bold" fill="black">'
-        '입력 데이터</text>'
-    )
-
-    # 축 이름
-    svg_parts.append(
-        f'<text x="{left + inner_width / 2}" '
-        f'y="{graph_height - 12}" '
-        'font-size="14" text-anchor="middle" fill="#222">'
-        f'{html.escape(x_col)} (cm)</text>'
-    )
-
-    svg_parts.append(
-        f'<text x="18" y="{top + inner_height / 2}" '
-        'font-size="14" text-anchor="middle" fill="#222" '
-        f'transform="rotate(-90 18 {top + inner_height / 2})">'
-        f'{html.escape(y_col)} (cm)</text>'
-    )
-
-    svg_parts.append('</svg>')
-
-    # 범례
-    legend = '<div style="display:flex; flex-wrap:wrap; gap:15px; margin-top:8px;">'
-
-    for index, species in enumerate(species_list):
-
-        color = colors[index % len(colors)]
-
-        legend += (
-            '<span style="display:flex;align-items:center;gap:5px;">'
-            f'<span style="width:11px;height:11px;border-radius:50%;'
-            f'background:{color};display:inline-block;"></span>'
-            f'{html.escape(species)}</span>'
-        )
-
-    legend += (
-        '<span style="display:flex;align-items:center;gap:5px;">'
-        '<span style="width:15px;height:15px;border-radius:50%;'
-        'background:black;display:inline-block;"></span>'
-        '<b>입력 데이터</b></span>'
-    )
-
-    legend += '</div>'
-
-    st.html(
-        '<div style="width:100%;overflow:hidden;">'
-        + ''.join(svg_parts)
-        + legend
-        + '</div>'
-    )
-
-
-# ==========================================
-# 10. 예측 화면 함수
-# ==========================================
-
-def show_prediction_tab(
-    tab_title,
-    selected_features,
-    tab_key
-):
+def show_prediction_tab(tab_title, selected_features, tab_key):
 
     st.subheader(tab_title)
 
-    st.write("선택한 두 가지 속성의 값을 입력해 주세요.")
+    st.write(
+        "선택한 두 가지 속성의 값을 입력해 주세요."
+    )
 
     input_values = []
 
@@ -471,7 +287,9 @@ def show_prediction_tab(
         minimum = float(df[feature].min())
         maximum = float(df[feature].max())
 
-        default_value = float(df[feature].median())
+        default_value = float(
+            df[feature].median()
+        )
 
         with [col1, col2][i]:
 
@@ -487,8 +305,12 @@ def show_prediction_tab(
             input_values.append(value)
 
     st.caption(
-        "입력 범위는 실제 CSV 데이터의 최솟값과 최댓값입니다."
+        "입력 범위는 실제 CSV 데이터의 최솟값과 최댓값을 기준으로 합니다."
     )
+
+    # --------------------------------------
+    # 예측 버튼
+    # --------------------------------------
 
     if st.button(
         "🔍 3가지 알고리즘으로 예측하기",
@@ -509,9 +331,9 @@ def show_prediction_tab(
 
         st.session_state[f"{tab_key}_input"] = input_values
 
-        st.session_state[f"{tab_key}_features"] = (
-            selected_features
-        )
+    # --------------------------------------
+    # 예측 결과 비교
+    # --------------------------------------
 
     result_key = f"{tab_key}_results"
 
@@ -527,10 +349,6 @@ def show_prediction_tab(
             f"{tab_key}_input"
         ]
 
-        saved_features = st.session_state[
-            f"{tab_key}_features"
-        ]
-
         st.divider()
 
         st.subheader("🏆 알고리즘별 예측 결과 비교")
@@ -542,7 +360,9 @@ def show_prediction_tab(
                 c1, c2, c3 = st.columns(3)
 
                 with c1:
-                    st.write(f"**{result['알고리즘']}**")
+                    st.write(
+                        f"**{result['알고리즘']}**"
+                    )
 
                 with c2:
                     st.success(
@@ -564,6 +384,10 @@ def show_prediction_tab(
             hide_index=True,
             use_container_width=True
         )
+
+        # ----------------------------------
+        # 품종별 예측 확률 비교
+        # ----------------------------------
 
         st.subheader("📈 품종별 예측 확률 비교")
 
@@ -590,14 +414,39 @@ def show_prediction_tab(
                 use_container_width=True
             )
 
+        # ----------------------------------
+        # 예측 위치 그래프
+        # ----------------------------------
+
         st.divider()
 
-        st.subheader("🎯 입력한 꽃의 위치")
+        st.subheader("🎯 입력한 데이터의 위치")
 
-        show_custom_graph(
-            saved_features,
-            saved_values,
-            tab_key
+        plot_df = df[
+            selected_features + ["품종"]
+        ].copy()
+
+        input_point = pd.DataFrame({
+            selected_features[0]: [saved_values[0]],
+            selected_features[1]: [saved_values[1]],
+            "품종": ["입력 데이터"]
+        })
+
+        plot_df = pd.concat(
+            [plot_df, input_point],
+            ignore_index=True
+        )
+
+        st.scatter_chart(
+            plot_df,
+            x=selected_features[0],
+            y=selected_features[1],
+            color="품종"
+        )
+
+        st.caption(
+            f"가로축: {selected_features[0]} / "
+            f"세로축: {selected_features[1]}"
         )
 
     else:
@@ -605,6 +454,8 @@ def show_prediction_tab(
         st.info(
             "속성을 입력한 다음 예측 버튼을 눌러 주세요."
         )
+
+        # 예측 전에도 실제 데이터 분포 표시
 
         st.subheader("📊 실제 붓꽃 데이터 분포")
 
@@ -616,7 +467,8 @@ def show_prediction_tab(
         )
 
     # ======================================
-    # 알고리즘 작동 원리
+    # 10. 알고리즘 작동 원리
+    # 그래프 아래에 설명
     # ======================================
 
     st.divider()
@@ -627,13 +479,17 @@ def show_prediction_tab(
 
         st.write(
             """
-            ① 새로운 붓꽃의 속성값을 입력합니다.
+            KNN은 새로운 데이터와 기존 데이터 사이의
+            거리를 비교하는 알고리즘입니다.
+
+            ① 새로운 붓꽃의 꽃잎 또는 꽃받침 정보를 입력합니다.
 
             ② 기존 데이터 중 가장 가까운 데이터 5개를 찾습니다.
 
-            ③ 가장 많이 등장한 품종을 예측합니다.
+            ③ 가장 많이 등장한 품종을 새로운 붓꽃의 품종으로 예측합니다.
 
-            **핵심 원리:** 가까운 이웃들의 정보를 이용합니다.
+            **핵심 원리:** 가까운 이웃들의 정보를 이용하여
+            새로운 데이터의 종류를 판단합니다.
             """
         )
 
@@ -641,13 +497,17 @@ def show_prediction_tab(
 
         st.write(
             """
-            ① 꽃잎과 꽃받침의 특징을 확인합니다.
+            의사결정나무는 여러 가지 질문을 통해
+            데이터를 분류하는 알고리즘입니다.
 
-            ② 특징에 따라 데이터를 여러 조건으로 나눕니다.
+            ① 꽃잎 길이와 꽃잎 너비 등의 특징을 확인합니다.
 
-            ③ 조건을 따라가며 최종 품종을 결정합니다.
+            ② 데이터의 특징에 따라 여러 가지 조건으로 나눕니다.
 
-            **핵심 원리:** 질문과 조건을 단계적으로 거칩니다.
+            ③ 조건을 따라가면서 최종 품종을 결정합니다.
+
+            **핵심 원리:** 질문과 조건을 단계적으로 거쳐
+            최종적인 품종을 판단합니다.
             """
         )
 
@@ -655,13 +515,18 @@ def show_prediction_tab(
 
         st.write(
             """
+            랜덤 포레스트는 여러 개의 의사결정나무를
+            만들어 결과를 종합하는 알고리즘입니다.
+
             ① 여러 개의 의사결정나무를 학습시킵니다.
 
-            ② 각각의 나무가 품종을 예측합니다.
+            ② 각각의 나무가 붓꽃의 품종을 예측합니다.
 
-            ③ 여러 나무의 예측 결과를 종합합니다.
+            ③ 여러 나무의 예측 결과를 종합하여
+            최종 품종을 결정합니다.
 
-            **핵심 원리:** 여러 의사결정나무의 결과를 종합합니다.
+            **핵심 원리:** 여러 의사결정나무의 결과를
+            종합하여 예측합니다.
             """
         )
 
@@ -681,13 +546,13 @@ tab1, tab2 = st.tabs([
 
 
 # ==========================================
-# 12. 탭 1
+# 12. 탭 1 - 기존 꽃잎 속성
 # ==========================================
 
 with tab1:
 
     st.info(
-        "꽃잎 길이와 꽃잎 너비를 이용합니다."
+        "기존과 동일하게 꽃잎 길이와 꽃잎 너비를 이용합니다."
     )
 
     show_prediction_tab(
@@ -698,13 +563,14 @@ with tab1:
 
 
 # ==========================================
-# 13. 탭 2
+# 13. 탭 2 - 원하는 속성 선택
 # ==========================================
 
 with tab2:
 
     st.info(
-        "4가지 속성 중 원하는 2개를 선택하세요."
+        "꽃받침과 꽃잎을 포함한 4가지 속성 중 "
+        "원하는 2개를 선택할 수 있습니다."
     )
 
     col1, col2 = st.columns(2)
