@@ -1,8 +1,7 @@
-\
+
 import streamlit as st
 import pandas as pd
 import os
-import matplotlib.pyplot as plt
 
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import StandardScaler
@@ -19,6 +18,7 @@ st.set_page_config(
 )
 
 st.title("🌸 붓꽃(Iris) 품종 예측 프로그램")
+
 st.write(
     "꽃잎의 길이와 너비를 입력하면 "
     "인공지능이 붓꽃의 품종을 예측해 줍니다!"
@@ -26,7 +26,7 @@ st.write(
 
 
 # --------------------------------
-# 2. CSV 파일 경로 설정
+# 2. CSV 파일 경로
 # --------------------------------
 
 BASE_DIR = os.path.dirname(
@@ -45,7 +45,7 @@ FILE_PATH = os.path.join(
 
 if not os.path.exists(FILE_PATH):
     st.error("Iris.csv 파일을 찾을 수 없습니다.")
-    st.write("현재 찾고 있는 위치:", FILE_PATH)
+    st.write("찾는 파일 위치:", FILE_PATH)
     st.stop()
 
 try:
@@ -66,12 +66,18 @@ except Exception as e:
 
 
 # --------------------------------
-# 4. 실제 CSV 열 이름 확인
+# 4. CSV 열 이름 확인
 # --------------------------------
 
-df.columns = df.columns.astype(str).str.strip()
+df.columns = (
+    df.columns.astype(str)
+    .str.replace("\ufeff", "", regex=False)
+    .str.strip()
+)
 
 REQUIRED_COLUMNS = [
+    "꽃받침 길이",
+    "꽃받침 너비",
     "꽃잎 길이",
     "꽃잎 너비",
     "품종"
@@ -87,8 +93,8 @@ if missing_columns:
         f"필요한 열을 찾지 못했습니다: {missing_columns}"
     )
 
-    st.write("실제로 읽은 CSV 열 이름:", df.columns.tolist())
-    st.write("읽은 파일 위치:", FILE_PATH)
+    st.write("실제 CSV 열 이름:", df.columns.tolist())
+    st.write("CSV 파일 위치:", FILE_PATH)
     st.stop()
 
 
@@ -96,37 +102,39 @@ if missing_columns:
 # 5. 데이터 전처리
 # --------------------------------
 
-df["꽃잎 길이"] = pd.to_numeric(
-    df["꽃잎 길이"],
-    errors="coerce"
-)
+NUMERIC_COLUMNS = [
+    "꽃받침 길이",
+    "꽃받침 너비",
+    "꽃잎 길이",
+    "꽃잎 너비"
+]
 
-df["꽃잎 너비"] = pd.to_numeric(
-    df["꽃잎 너비"],
-    errors="coerce"
-)
+for col in NUMERIC_COLUMNS:
+    df[col] = pd.to_numeric(
+        df[col],
+        errors="coerce"
+    )
 
 df["품종"] = df["품종"].astype(str).str.strip()
 
-df = df.dropna(
-    subset=[
-        "꽃잎 길이",
-        "꽃잎 너비",
-        "품종"
-    ]
+df = df.replace(
+    [float("inf"), float("-inf")],
+    float("nan")
 )
 
-df = df[
-    df["품종"] != ""
-]
+df = df.dropna(
+    subset=REQUIRED_COLUMNS
+)
+
+df = df[df["품종"] != ""]
 
 if len(df) < 2:
-    st.error("분석할 데이터가 부족합니다.")
+    st.error("학습할 데이터가 부족합니다.")
     st.stop()
 
 
 # --------------------------------
-# 6. 데이터 확인
+# 6. 데이터 정보
 # --------------------------------
 
 st.subheader("📊 데이터 정보")
@@ -134,16 +142,28 @@ st.subheader("📊 데이터 정보")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.metric("전체 데이터 개수", len(df))
+    st.metric(
+        "전체 데이터 개수",
+        len(df)
+    )
 
 with col2:
-    st.metric("붓꽃 품종 개수", df["품종"].nunique())
+    st.metric(
+        "붓꽃 품종 개수",
+        df["품종"].nunique()
+    )
 
 with col3:
-    st.metric("분석에 사용하는 변수", 2)
+    st.metric(
+        "사용하는 특징",
+        "2개"
+    )
 
 with st.expander("CSV 데이터 확인하기"):
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(
+        df,
+        use_container_width=True
+    )
 
 
 # --------------------------------
@@ -168,24 +188,24 @@ knn.fit(X_scaled, y)
 
 
 # --------------------------------
-# 8. 입력 범위 설정
+# 8. 꽃잎 입력
 # --------------------------------
+
+st.divider()
 
 st.subheader("🌱 꽃잎 정보 입력하기")
 
-petal_length_min = float(df["꽃잎 길이"].min())
-petal_length_max = float(df["꽃잎 길이"].max())
+length_min = float(df["꽃잎 길이"].min())
+length_max = float(df["꽃잎 길이"].max())
 
-petal_width_min = float(df["꽃잎 너비"].min())
-petal_width_max = float(df["꽃잎 너비"].max())
+width_min = float(df["꽃잎 너비"].min())
+width_max = float(df["꽃잎 너비"].max())
 
 st.info(
     f"""
-    꽃잎 길이 입력 범위:
-    {petal_length_min} ~ {petal_length_max}
+    꽃잎 길이 범위: {length_min} ~ {length_max} cm
 
-    꽃잎 너비 입력 범위:
-    {petal_width_min} ~ {petal_width_max}
+    꽃잎 너비 범위: {width_min} ~ {width_max} cm
     """
 )
 
@@ -194,8 +214,8 @@ col1, col2 = st.columns(2)
 with col1:
     petal_length = st.number_input(
         "🌸 꽃잎 길이 (cm)",
-        min_value=petal_length_min,
-        max_value=petal_length_max,
+        min_value=length_min,
+        max_value=length_max,
         value=float(df["꽃잎 길이"].median()),
         step=0.1
     )
@@ -203,8 +223,8 @@ with col1:
 with col2:
     petal_width = st.number_input(
         "🌸 꽃잎 너비 (cm)",
-        min_value=petal_width_min,
-        max_value=petal_width_max,
+        min_value=width_min,
+        max_value=width_max,
         value=float(df["꽃잎 너비"].median()),
         step=0.1
     )
@@ -214,7 +234,10 @@ with col2:
 # 9. 품종 예측
 # --------------------------------
 
-if st.button("🔍 붓꽃 품종 예측하기", use_container_width=True):
+if st.button(
+    "🔍 붓꽃 품종 예측하기",
+    use_container_width=True
+):
 
     input_data = pd.DataFrame(
         [[petal_length, petal_width]],
@@ -225,10 +248,12 @@ if st.button("🔍 붓꽃 품종 예측하기", use_container_width=True):
 
     prediction = knn.predict(input_scaled)
 
-    probabilities = knn.predict_proba(input_scaled)[0]
+    probabilities = knn.predict_proba(
+        input_scaled
+    )[0]
 
     st.success(
-        f"🌸 예측된 붓꽃 품종은 **{prediction[0]}** 입니다!"
+        f"🌸 예측 결과: {prediction[0]}"
     )
 
     st.subheader("📈 품종별 예측 확률")
@@ -244,92 +269,67 @@ if st.button("🔍 붓꽃 품종 예측하기", use_container_width=True):
     )
 
     st.bar_chart(
-        probability_df.set_index("품종")
+        probability_df,
+        x="품종",
+        y="예측 확률 (%)"
+    )
+
+    st.dataframe(
+        probability_df,
+        hide_index=True,
+        use_container_width=True
     )
 
 
 # --------------------------------
-# 10. 꽃잎 길이와 너비 산점도
+# 10. 품종별 꽃잎 분포 그래프
 # --------------------------------
 
 st.divider()
 
 st.subheader("📊 붓꽃 품종별 꽃잎 분포")
 
-fig, ax = plt.subplots(figsize=(10, 6))
-
-species_list = sorted(df["품종"].unique())
-
-for species in species_list:
-
-    species_data = df[
-        df["품종"] == species
-    ]
-
-    ax.scatter(
-        species_data["꽃잎 길이"],
-        species_data["꽃잎 너비"],
-        label=species,
-        alpha=0.7,
-        s=55
-    )
-
-ax.set_xlabel("Petal Length (cm)")
-ax.set_ylabel("Petal Width (cm)")
-
-ax.set_title(
-    "Iris Species - Petal Length vs Petal Width"
+st.write(
+    "가로축은 꽃잎 길이, 세로축은 꽃잎 너비입니다."
 )
 
-ax.legend(title="Species")
-
-ax.grid(alpha=0.3)
-
-st.pyplot(fig)
+st.scatter_chart(
+    df,
+    x="꽃잎 길이",
+    y="꽃잎 너비",
+    color="품종"
+)
 
 
 # --------------------------------
-# 11. 입력한 데이터 그래프에 표시
+# 11. 입력한 꽃잎 위치 확인
 # --------------------------------
+
+st.divider()
 
 st.subheader("🎯 입력한 꽃잎 위치 확인하기")
 
-fig2, ax2 = plt.subplots(figsize=(10, 6))
+input_point = pd.DataFrame({
+    "꽃잎 길이": [petal_length],
+    "꽃잎 너비": [petal_width],
+    "품종": ["입력한 데이터"]
+})
 
-for species in species_list:
-
-    species_data = df[
-        df["품종"] == species
-    ]
-
-    ax2.scatter(
-        species_data["꽃잎 길이"],
-        species_data["꽃잎 너비"],
-        label=species,
-        alpha=0.5,
-        s=45
-    )
-
-ax2.scatter(
-    petal_length,
-    petal_width,
-    marker="*",
-    s=300,
-    color="red",
-    edgecolors="black",
-    label="입력한 데이터"
+plot_df = pd.concat(
+    [df, input_point],
+    ignore_index=True
 )
 
-ax2.set_xlabel("Petal Length (cm)")
-ax2.set_ylabel("Petal Width (cm)")
+st.scatter_chart(
+    plot_df,
+    x="꽃잎 길이",
+    y="꽃잎 너비",
+    color="품종"
+)
 
-ax2.set_title("Input Data Position")
-
-ax2.legend()
-
-ax2.grid(alpha=0.3)
-
-st.pyplot(fig2)
+st.caption(
+    "⭐ 입력한 데이터는 '입력한 데이터' 항목으로 표시됩니다."
+)
 
 
 # --------------------------------
@@ -338,6 +338,11 @@ st.pyplot(fig2)
 
 st.divider()
 
+st.success(
+    "🌸 붓꽃 품종 분석이 준비되었습니다!"
+)
+
 st.caption(
-    "🌸 KNN 알고리즘과 StandardScaler를 활용한 붓꽃 품종 예측 프로그램"
+    "KNN 알고리즘과 StandardScaler를 활용한 "
+    "붓꽃 품종 예측 프로그램"
 )
