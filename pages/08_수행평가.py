@@ -49,13 +49,15 @@ def normalize_station(name):
     name = str(name).strip()
     name = re.sub(r"\([^)]*\)", "", name)
     name = name.replace(" ", "")
+
     if name.endswith("역"):
         name = name[:-1]
+
     return name
 
 
 def time_to_seconds(value):
-    """1:30 형태의 시간을 초 단위로 변환한다."""
+    """시간을 초 단위로 변환한다."""
     value = str(value).strip()
 
     if not value or value.lower() == "nan":
@@ -63,15 +65,19 @@ def time_to_seconds(value):
 
     try:
         parts = value.split(":")
+
         if len(parts) == 2:
             return int(parts[0]) * 60 + int(parts[1])
+
         if len(parts) == 3:
             return (
                 int(parts[0]) * 3600
                 + int(parts[1]) * 60
                 + int(parts[2])
             )
+
         return int(float(value))
+
     except (ValueError, TypeError):
         return 0
 
@@ -84,22 +90,77 @@ def seconds_to_text(seconds):
 
     if remain == 0:
         return f"{minutes}분"
+
     return f"{minutes}분 {remain}초"
 
 
 def get_line_number(value):
     """1호선, 2호선 등의 숫자를 가져온다."""
     match = re.search(r"\d+", str(value))
+
     if match:
         return match.group()
+
     return None
 
 
 # --------------------------------------------------
-# 4. CSV 파일 불러오기
+# 4. CSV 인코딩 자동 확인 함수
+# --------------------------------------------------
+def read_csv_auto(file_path, sep=","):
+    """
+    CSV 파일의 인코딩을 자동으로 확인한다.
+    파일마다 다른 인코딩을 사용해도 읽을 수 있도록 한다.
+    """
+
+    encodings = [
+        "utf-8-sig",
+        "utf-8",
+        "cp949",
+        "euc-kr"
+    ]
+
+    errors = []
+
+    for encoding in encodings:
+        try:
+            df = pd.read_csv(
+                file_path,
+                encoding=encoding,
+                sep=sep,
+                low_memory=False
+            )
+
+            # 열 이름 앞뒤 공백 제거
+            df.columns = [
+                str(col).strip()
+                for col in df.columns
+            ]
+
+            return df
+
+        except UnicodeDecodeError as e:
+            errors.append(
+                f"{encoding}: {str(e)}"
+            )
+
+        except Exception as e:
+            errors.append(
+                f"{encoding}: {str(e)}"
+            )
+
+    raise ValueError(
+        f"CSV 파일을 읽을 수 없습니다: {os.path.basename(file_path)}\n"
+        + "\n".join(errors)
+    )
+
+
+# --------------------------------------------------
+# 5. CSV 파일 불러오기
 # --------------------------------------------------
 @st.cache_data
 def load_csv_files():
+
     missing = []
 
     for file_path in [
@@ -108,31 +169,31 @@ def load_csv_files():
         TRANSFER_FILE
     ]:
         if not os.path.exists(file_path):
-            missing.append(os.path.basename(file_path))
+            missing.append(
+                os.path.basename(file_path)
+            )
 
     if missing:
         raise FileNotFoundError(
-            "다음 파일을 찾을 수 없습니다:\n"
+            "다음 파일을 찾을 수 없습니다.\n\n"
             + "\n".join(missing)
+            + "\n\nCSV 파일 3개가 GitHub 저장소의 최상위 폴더에 있는지 확인해 주세요."
         )
 
     # 역 좌표 파일은 탭으로 구분
-    coord_df = pd.read_csv(
+    coord_df = read_csv_auto(
         COORD_FILE,
-        encoding="cp949",
         sep="\t"
     )
 
     # 역간 거리 파일
-    distance_df = pd.read_csv(
-        DISTANCE_FILE,
-        encoding="cp949"
+    distance_df = read_csv_auto(
+        DISTANCE_FILE
     )
 
     # 환승역 거리 파일
-    transfer_df = pd.read_csv(
-        TRANSFER_FILE,
-        encoding="cp949"
+    transfer_df = read_csv_auto(
+        TRANSFER_FILE
     )
 
     required_coord = {
@@ -179,7 +240,7 @@ def load_csv_files():
 
 
 # --------------------------------------------------
-# 5. 지하철 그래프 만들기
+# 6. 지하철 그래프 만들기
 # --------------------------------------------------
 def build_graph(coord_df, distance_df, transfer_df):
 
@@ -198,6 +259,7 @@ def build_graph(coord_df, distance_df, transfer_df):
         try:
             longitude = float(row["환승역X좌표"])
             latitude = float(row["환승역Y좌표"])
+
         except (ValueError, TypeError):
             continue
 
@@ -244,12 +306,13 @@ def build_graph(coord_df, distance_df, transfer_df):
                 )
 
                 try:
-                    distance_km = float(row["역간거리(km)"])
+                    distance_km = float(
+                        row["역간거리(km)"]
+                    )
+
                 except (ValueError, TypeError):
                     distance_km = 0.0
 
-                # 서로 다른 역인데 이동 시간이 0이면
-                # 임의의 시간을 만들어내지 않고 연결하지 않는다.
                 if travel_seconds > 0:
 
                     graph[previous_node].append({
@@ -285,7 +348,6 @@ def build_graph(coord_df, distance_df, transfer_df):
         source_node = (source_line, station_key)
         target_node = (target_line, station_key)
 
-        # 실제 역간 거리 파일에 존재하는 노선만 연결
         if (
             source_node not in station_info
             or target_node not in station_info
@@ -297,7 +359,10 @@ def build_graph(coord_df, distance_df, transfer_df):
         )
 
         try:
-            transfer_distance = float(row["환승거리"])
+            transfer_distance = float(
+                row["환승거리"]
+            )
+
         except (ValueError, TypeError):
             transfer_distance = 0.0
 
@@ -322,7 +387,7 @@ def build_graph(coord_df, distance_df, transfer_df):
 
 
 # --------------------------------------------------
-# 6. 다익스트라 최단 경로 알고리즘
+# 7. 다익스트라 최단 경로 알고리즘
 # --------------------------------------------------
 def dijkstra(graph, start, end):
 
@@ -335,7 +400,10 @@ def dijkstra(graph, start, end):
 
         current_time, current_node = heapq.heappop(queue)
 
-        if current_time > distances.get(current_node, float("inf")):
+        if current_time > distances.get(
+            current_node,
+            float("inf")
+        ):
             continue
 
         if current_node == end:
@@ -346,7 +414,10 @@ def dijkstra(graph, start, end):
             next_node = edge["to"]
             new_time = current_time + edge["time"]
 
-            if new_time < distances.get(next_node, float("inf")):
+            if new_time < distances.get(
+                next_node,
+                float("inf")
+            ):
 
                 distances[next_node] = new_time
 
@@ -373,6 +444,7 @@ def dijkstra(graph, start, end):
         path.append(current)
 
         previous_node, edge = previous[current]
+
         edges.append(edge)
 
         current = previous_node
@@ -386,30 +458,36 @@ def dijkstra(graph, start, end):
 
 
 # --------------------------------------------------
-# 7. 좌표 찾기
+# 8. 좌표 찾기
 # --------------------------------------------------
-def find_coordinate(node, station_info, coordinate_lookup):
+def find_coordinate(
+    node,
+    station_info,
+    coordinate_lookup
+):
 
     station_name = station_info[node]["name"]
     station_key = normalize_station(station_name)
     line = node[0]
 
-    candidates = coordinate_lookup.get(station_key, [])
+    candidates = coordinate_lookup.get(
+        station_key,
+        []
+    )
 
     if not candidates:
         return None
 
-    # 같은 이름의 역이 여러 개면 노선이 일치하는 좌표 우선
     for item in candidates:
+
         if get_line_number(item["line"]) == line:
             return item
 
-    # 노선이 일치하지 않더라도 역 이름이 정확히 일치하면 사용
     return candidates[0]
 
 
 # --------------------------------------------------
-# 8. 데이터 로딩 및 그래프 생성
+# 9. 데이터 로딩 및 그래프 생성
 # --------------------------------------------------
 try:
 
@@ -421,6 +499,10 @@ try:
         transfer_df
     )
 
+    if not station_info:
+        st.error("지하철 역 정보를 불러오지 못했습니다.")
+        st.stop()
+
 except Exception as e:
 
     st.error("데이터를 불러오는 중 오류가 발생했습니다.")
@@ -429,11 +511,10 @@ except Exception as e:
 
 
 # --------------------------------------------------
-# 9. 출발역과 도착역 선택
+# 10. 출발역과 도착역 선택
 # --------------------------------------------------
 st.subheader("📍 출발역과 도착역 선택")
 
-# 역 이름과 노선을 함께 표시
 station_options = sorted(
     station_info.keys(),
     key=lambda x: (
@@ -455,6 +536,7 @@ for node in station_options:
 col1, col2 = st.columns(2)
 
 with col1:
+
     start = st.selectbox(
         "🚉 출발역",
         station_options,
@@ -463,6 +545,7 @@ with col1:
     )
 
 with col2:
+
     end = st.selectbox(
         "🏁 도착역",
         station_options,
@@ -473,9 +556,12 @@ with col2:
 
 
 # --------------------------------------------------
-# 10. 경로 검색
+# 11. 경로 검색
 # --------------------------------------------------
-if st.button("🚇 최적 경로 검색", type="primary"):
+if st.button(
+    "🚇 최적 경로 검색",
+    type="primary"
+):
 
     if start == end:
 
@@ -544,11 +630,13 @@ if st.button("🚇 최적 경로 검색", type="primary"):
                 info = station_info[node]
 
                 if i == 0:
+
                     st.markdown(
                         f"🟢 **출발: {info['name']} ({info['line']}호선)**"
                     )
 
                 elif i == len(path) - 1:
+
                     st.markdown(
                         f"🏁 **도착: {info['name']} ({info['line']}호선)**"
                     )
@@ -558,11 +646,14 @@ if st.button("🚇 최적 경로 검색", type="primary"):
                     previous_edge = edges[i - 1]
 
                     if previous_edge["type"] == "환승":
+
                         st.markdown(
                             f"🔄 **{info['name']}역에서 "
                             f"{info['line']}호선으로 환승**"
                         )
+
                     else:
+
                         st.markdown(
                             f"⬇️ {info['name']} ({info['line']}호선)"
                         )
@@ -603,6 +694,7 @@ if st.button("🚇 최적 경로 검색", type="primary"):
                     st.write("•", item)
 
             else:
+
                 st.info("환승 없이 이동하는 경로입니다.")
 
             # --------------------------------------
@@ -631,20 +723,28 @@ if st.button("🚇 최적 경로 검색", type="primary"):
                 ]["line"]
 
                 detail_rows.append({
+
                     "출발역": from_name,
+
                     "도착역": to_name,
+
                     "이동 구분": edge["type"],
+
                     "노선": (
                         f"{from_line}호선 → {to_line}호선"
                         if edge["type"] == "환승"
                         else f"{from_line}호선"
                     ),
+
                     "소요 시간": seconds_to_text(
                         edge["time"]
                     ),
+
                     "거리(km)": round(
-                        edge["distance"], 2
+                        edge["distance"],
+                        2
                     )
+
                 })
 
             detail_df = pd.DataFrame(detail_rows)
@@ -674,15 +774,17 @@ if st.button("🚇 최적 경로 검색", type="primary"):
                     continue
 
                 map_rows.append({
+
                     "latitude": coordinate["latitude"],
+
                     "longitude": coordinate["longitude"]
+
                 })
 
             if map_rows:
 
                 map_df = pd.DataFrame(map_rows)
 
-                # 같은 좌표 중복 제거
                 map_df = map_df.drop_duplicates()
 
                 st.map(
@@ -715,7 +817,7 @@ if st.button("🚇 최적 경로 검색", type="primary"):
             st.caption(
                 "※ 역간 이동 자료는 1~8호선이며, "
                 "해당 자료에서 이동 시간이 0으로 기록된 역간 연결은 "
-                "잘못된 무료 이동 경로가 만들어지지 않도록 제외했습니다."
+                "제외했습니다."
             )
 
 else:
