@@ -20,7 +20,6 @@ st.write("출발역과 도착역을 선택하면 가장 빠른 이동 경로를 
 
 # --------------------------------------------------
 # 2. 파일 경로 설정
-# pages 폴더의 상위 폴더가 프로젝트 최상위 폴더
 # --------------------------------------------------
 BASE_DIR = os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))
@@ -45,7 +44,6 @@ TRANSFER_FILE = os.path.join(
 # 3. 공통 함수
 # --------------------------------------------------
 def normalize_station(name):
-    """역 이름의 공백과 괄호 등을 정리한다."""
     name = str(name).strip()
     name = re.sub(r"\([^)]*\)", "", name)
     name = name.replace(" ", "")
@@ -57,7 +55,6 @@ def normalize_station(name):
 
 
 def time_to_seconds(value):
-    """시간을 초 단위로 변환한다."""
     value = str(value).strip()
 
     if not value or value.lower() == "nan":
@@ -83,7 +80,6 @@ def time_to_seconds(value):
 
 
 def seconds_to_text(seconds):
-    """초를 분과 초로 표시한다."""
     seconds = int(round(seconds))
     minutes = seconds // 60
     remain = seconds % 60
@@ -95,7 +91,6 @@ def seconds_to_text(seconds):
 
 
 def get_line_number(value):
-    """1호선, 2호선 등의 숫자를 가져온다."""
     match = re.search(r"\d+", str(value))
 
     if match:
@@ -105,13 +100,9 @@ def get_line_number(value):
 
 
 # --------------------------------------------------
-# 4. CSV 인코딩 자동 확인 함수
+# 4. CSV 자동 인코딩 및 구분자 확인
 # --------------------------------------------------
-def read_csv_auto(file_path, sep=","):
-    """
-    CSV 파일의 인코딩을 자동으로 확인한다.
-    파일마다 다른 인코딩을 사용해도 읽을 수 있도록 한다.
-    """
+def read_csv_auto(file_path, sep=None):
 
     encodings = [
         "utf-8-sig",
@@ -120,120 +111,137 @@ def read_csv_auto(file_path, sep=","):
         "euc-kr"
     ]
 
+    separators = [sep] if sep is not None else [",", "\t", ";"]
+
     errors = []
 
     for encoding in encodings:
-        try:
-            df = pd.read_csv(
-                file_path,
-                encoding=encoding,
-                sep=sep,
-                low_memory=False
-            )
 
-            # 열 이름 앞뒤 공백 제거
-            df.columns = [
-                str(col).strip()
-                for col in df.columns
-            ]
+        for separator in separators:
 
-            return df
+            try:
+                df = pd.read_csv(
+                    file_path,
+                    encoding=encoding,
+                    sep=separator,
+                    low_memory=False
+                )
 
-        except UnicodeDecodeError as e:
-            errors.append(
-                f"{encoding}: {str(e)}"
-            )
+                df.columns = [
+                    str(col).strip()
+                    for col in df.columns
+                ]
 
-        except Exception as e:
-            errors.append(
-                f"{encoding}: {str(e)}"
-            )
+                # 실제 열이 여러 개로 나뉘었는지 확인
+                if len(df.columns) > 1:
+                    return df
+
+            except Exception as e:
+
+                errors.append(
+                    f"{encoding}, 구분자 {repr(separator)}: {e}"
+                )
 
     raise ValueError(
-        f"CSV 파일을 읽을 수 없습니다: {os.path.basename(file_path)}\n"
-        + "\n".join(errors)
+        f"CSV 읽기 실패: {os.path.basename(file_path)}\n"
+        + "\n".join(errors[-5:])
     )
 
 
 # --------------------------------------------------
-# 5. CSV 파일 불러오기
+# 5. CSV 파일 자동 분류
 # --------------------------------------------------
 @st.cache_data
 def load_csv_files():
 
-    missing = []
+    if not os.path.isdir(BASE_DIR):
+        raise FileNotFoundError(
+            f"프로젝트 폴더를 찾을 수 없습니다: {BASE_DIR}"
+        )
 
-    for file_path in [
-        COORD_FILE,
-        DISTANCE_FILE,
-        TRANSFER_FILE
-    ]:
-        if not os.path.exists(file_path):
-            missing.append(
-                os.path.basename(file_path)
+    csv_files = [
+        os.path.join(BASE_DIR, name)
+        for name in os.listdir(BASE_DIR)
+        if name.lower().endswith(".csv")
+    ]
+
+    if not csv_files:
+        raise FileNotFoundError(
+            "프로젝트 최상위 폴더에서 CSV 파일을 찾을 수 없습니다."
+        )
+
+    coord_df = None
+    distance_df = None
+    transfer_df = None
+
+    read_errors = []
+
+    for file_path in csv_files:
+
+        try:
+            # 탭 구분 파일과 쉼표 구분 파일 모두 검사
+            df = read_csv_auto(file_path)
+
+            columns = set(df.columns)
+
+            # 역 좌표 파일
+            if {
+                "역한글명칭",
+                "호선명칭",
+                "환승역X좌표",
+                "환승역Y좌표"
+            }.issubset(columns):
+
+                coord_df = df
+                continue
+
+            # 환승역 파일
+            if {
+                "호선",
+                "환승역명",
+                "환승노선",
+                "환승거리",
+                "환승소요시간"
+            }.issubset(columns):
+
+                transfer_df = df
+                continue
+
+            # 역간 거리 파일
+            if {
+                "호선",
+                "역명",
+                "소요시간",
+                "역간거리(km)"
+            }.issubset(columns):
+
+                distance_df = df
+                continue
+
+        except Exception as e:
+
+            read_errors.append(
+                f"{os.path.basename(file_path)}: {e}"
             )
 
+    missing = []
+
+    if coord_df is None:
+        missing.append("역 좌표 파일")
+
+    if distance_df is None:
+        missing.append("역간 거리 파일")
+
+    if transfer_df is None:
+        missing.append("환승역 파일")
+
     if missing:
-        raise FileNotFoundError(
-            "다음 파일을 찾을 수 없습니다.\n\n"
-            + "\n".join(missing)
-            + "\n\nCSV 파일 3개가 GitHub 저장소의 최상위 폴더에 있는지 확인해 주세요."
-        )
 
-    # 역 좌표 파일은 탭으로 구분
-    coord_df = read_csv_auto(
-        COORD_FILE,
-        sep="\t"
-    )
-
-    # 역간 거리 파일
-    distance_df = read_csv_auto(
-        DISTANCE_FILE
-    )
-
-    # 환승역 거리 파일
-    transfer_df = read_csv_auto(
-        TRANSFER_FILE
-    )
-
-    required_coord = {
-        "역한글명칭",
-        "호선명칭",
-        "환승역X좌표",
-        "환승역Y좌표"
-    }
-
-    required_distance = {
-        "호선",
-        "역명",
-        "소요시간",
-        "역간거리(km)"
-    }
-
-    required_transfer = {
-        "호선",
-        "환승역명",
-        "환승노선",
-        "환승거리",
-        "환승소요시간"
-    }
-
-    if not required_coord.issubset(coord_df.columns):
         raise ValueError(
-            "역 좌표 CSV의 열 이름이 예상과 다릅니다.\n"
-            f"현재 열: {list(coord_df.columns)}"
-        )
-
-    if not required_distance.issubset(distance_df.columns):
-        raise ValueError(
-            "역간 거리 CSV의 열 이름이 예상과 다릅니다.\n"
-            f"현재 열: {list(distance_df.columns)}"
-        )
-
-    if not required_transfer.issubset(transfer_df.columns):
-        raise ValueError(
-            "환승역 CSV의 열 이름이 예상과 다릅니다.\n"
-            f"현재 열: {list(transfer_df.columns)}"
+            "필요한 CSV 자료를 찾지 못했습니다.\n\n"
+            f"찾지 못한 자료: {', '.join(missing)}\n\n"
+            "프로젝트 폴더의 CSV 파일 이름과 열 이름을 확인해 주세요.\n\n"
+            + "\n".join(read_errors)
         )
 
     return coord_df, distance_df, transfer_df
@@ -263,6 +271,9 @@ def build_graph(coord_df, distance_df, transfer_df):
         except (ValueError, TypeError):
             continue
 
+        if not (-180 <= longitude <= 180 and -90 <= latitude <= 90):
+            continue
+
         key = normalize_station(station_name)
 
         coordinate_lookup[key].append({
@@ -281,6 +292,10 @@ def build_graph(coord_df, distance_df, transfer_df):
         group = group.copy()
 
         if "연번" in group.columns:
+            group["연번"] = pd.to_numeric(
+                group["연번"],
+                errors="coerce"
+            )
             group = group.sort_values("연번")
 
         rows = group.to_dict("records")
@@ -290,6 +305,10 @@ def build_graph(coord_df, distance_df, transfer_df):
         for row in rows:
 
             station_name = str(row["역명"]).strip()
+
+            if station_name.lower() == "nan":
+                continue
+
             station_key = normalize_station(station_name)
 
             node = (line, station_key)
@@ -340,6 +359,10 @@ def build_graph(coord_df, distance_df, transfer_df):
         target_line = get_line_number(row["환승노선"])
 
         station_name = str(row["환승역명"]).strip()
+
+        if station_name.lower() == "nan":
+            continue
+
         station_key = normalize_station(station_name)
 
         if source_line is None or target_line is None:
@@ -502,6 +525,13 @@ try:
     if not station_info:
         st.error("지하철 역 정보를 불러오지 못했습니다.")
         st.stop()
+
+    st.success(
+        f"데이터 불러오기 완료! "
+        f"역 좌표 {len(coord_df):,}개 / "
+        f"역간 자료 {len(distance_df):,}개 / "
+        f"환승 자료 {len(transfer_df):,}개"
+    )
 
 except Exception as e:
 
